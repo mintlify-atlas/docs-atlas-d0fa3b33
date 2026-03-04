@@ -1,0 +1,244 @@
+---
+title: harness config
+description: Manage harness configuration files
+---
+
+Manage harness configuration files (`harness.toml`).
+
+## Usage
+
+```bash
+harness config <subcommand>
+```
+
+## Subcommands
+
+### show
+
+Show the fully resolved configuration (global + project merged).
+
+```bash
+harness config show
+```
+
+**Output:** TOML configuration printed to stdout
+
+### init
+
+Create a template `harness.toml` in the current directory.
+
+```bash
+harness config init
+```
+
+**Output:** Creates `harness.toml` in the current directory
+
+### path
+
+Print the path to the active configuration file.
+
+```bash
+harness config path
+```
+
+**Output:** File path to the config (project or global)
+
+## Examples
+
+### Show current configuration
+
+```bash
+harness config show
+```
+
+Output:
+```toml
+default_agent = "claude"
+default_permissions = "full-access"
+log_level = "warn"
+
+[agents.claude]
+model = "sonnet"
+
+[agents.opencode]
+model = "claude-sonnet-4-20250514"
+```
+
+### Initialize a new project config
+
+```bash
+cd ~/my-project
+harness config init
+```
+
+Output:
+```
+Created config at: /home/user/my-project/harness.toml
+```
+
+The generated `harness.toml` contains:
+```toml
+# Harness configuration for this project
+# See: https://github.com/your-org/harness-cli
+
+# Default agent to use (claude, opencode, codex, cursor)
+# default_agent = "claude"
+
+# Default permission mode (full-access, read-only)
+# default_permissions = "full-access"
+
+# Log level (debug, info, warn, error)
+# log_level = "warn"
+
+# Agent-specific settings
+# [agents.claude]
+# model = "sonnet"
+# binary = "/custom/path/to/claude"
+# extra_args = ["--flag"]
+
+# [agents.opencode]
+# model = "claude-sonnet-4-20250514"
+
+# Model registry overrides
+# [models.sonnet]
+# description = "Claude Sonnet 4"
+# provider = "anthropic"
+# claude = "claude-sonnet-4-20250514"
+```
+
+### Get config file path
+
+```bash
+harness config path
+```
+
+Output (project config):
+```
+/home/user/my-project/harness.toml
+```
+
+Or (global config if no project config exists):
+```
+/home/user/.config/harness/config.toml
+```
+
+### Show config and save to file
+
+```bash
+harness config show > my-config-backup.toml
+```
+
+### Check if project has a config
+
+```bash
+if [ -f "$(harness config path)" ]; then
+  echo "Config exists at: $(harness config path)"
+fi
+```
+
+## Configuration hierarchy
+
+Harness loads configuration from multiple sources in this order (highest to lowest priority):
+
+1. **Project config** - `harness.toml` in current directory or any parent directory
+2. **Global config** - `~/.config/harness/config.toml` (or `%APPDATA%\harness\config.toml` on Windows)
+3. **Built-in defaults**
+
+### Project config (`harness.toml`)
+
+Create a project-specific config:
+
+```bash
+cd ~/my-project
+harness config init
+```
+
+Edit the generated `harness.toml`:
+
+```toml
+default_agent = "opencode"
+default_permissions = "read-only"
+
+[agents.opencode]
+model = "sonnet"
+extra_args = ["--verbose"]
+```
+
+Now all `harness run` commands in this directory (or subdirectories) will use these settings.
+
+### Global config
+
+Create a global config for all projects:
+
+```bash
+mkdir -p ~/.config/harness
+cat > ~/.config/harness/config.toml <<EOF
+default_agent = "claude"
+log_level = "info"
+
+[agents.claude]
+model = "opus"
+EOF
+```
+
+### Verify merged config
+
+See the final resolved configuration:
+
+```bash
+harness config show
+```
+
+This shows the merged result of all config sources.
+
+## Configuration options
+
+### Top-level settings
+
+```toml
+# Default agent to use when --agent is not specified
+default_agent = "claude"  # claude, opencode, codex, cursor
+
+# Default permission mode
+default_permissions = "full-access"  # full-access, read-only
+
+# Logging level for stderr output
+log_level = "warn"  # debug, info, warn, error
+
+# Default timeout in seconds
+default_timeout_secs = 300
+```
+
+### Agent-specific settings
+
+```toml
+[agents.claude]
+model = "sonnet"              # Model alias or full ID
+binary = "/usr/bin/claude"    # Override binary path
+extra_args = ["--verbose"]    # Extra flags passed to agent
+
+[agents.opencode]
+model = "claude-sonnet-4-20250514"
+```
+
+### Model registry overrides
+
+```toml
+[models.my-custom-model]
+description = "My custom model mapping"
+provider = "anthropic"
+claude = "claude-opus-4-20250514"
+opencode = "claude-opus-4-20250514"
+codex = "gpt-5-codex"
+```
+
+Now you can use:
+
+```bash
+harness run --model my-custom-model --prompt "test"
+```
+
+## Related commands
+
+- [`harness run`](/cli/run) - Run a task (uses config settings)
+- [`harness models`](/cli/models) - Manage model registry

@@ -1,0 +1,171 @@
+---
+title: Configuration
+description: Configure harness with harness.toml for project-level settings
+---
+
+## Overview
+
+Harness uses a `harness.toml` file in your project directory to configure defaults for agents, models, permissions, and other settings. This replaces the older `~/.config/harness/config.toml` (global) and `.harnessrc.toml` (project) configuration files.
+
+## Creating a Configuration File
+
+Generate a template configuration file in your current directory:
+
+```bash
+harness config init
+```
+
+This creates a `harness.toml` file with commented examples of all available options.
+
+## Viewing Current Configuration
+
+Show the fully resolved configuration (project + global settings merged):
+
+```bash
+harness config show
+```
+
+Print the path to the active configuration file:
+
+```bash
+harness config path
+```
+
+## Configuration Structure
+
+The `harness.toml` file supports the following top-level fields:
+
+### Global Defaults
+
+<ParamField path="default_agent" type="string">
+  Default agent to use when `--agent` is omitted. Options: `claude`, `opencode`, `codex`, `cursor`.
+</ParamField>
+
+<ParamField path="default_model" type="string">
+  Default model to use when `--model` is omitted. Uses the model registry for name resolution (e.g., `sonnet`, `opus`).
+</ParamField>
+
+<ParamField path="default_permissions" type="string">
+  Default permission mode. Options: `full-access`, `read-only`.
+</ParamField>
+
+<ParamField path="default_timeout_secs" type="number">
+  Default timeout in seconds for agent execution.
+</ParamField>
+
+<ParamField path="log_level" type="string">
+  Logging verbosity. Options: `error`, `warn`, `info`, `debug`, `trace`.
+</ParamField>
+
+### Per-Agent Settings
+
+Configure agent-specific defaults using `[agents.<agent_name>]` sections:
+
+<ParamField path="agents.<name>.binary" type="string">
+  Override the binary path for this agent.
+</ParamField>
+
+<ParamField path="agents.<name>.model" type="string">
+  Default model for this specific agent (takes precedence over global `default_model`).
+</ParamField>
+
+<ParamField path="agents.<name>.extra_args" type="array">
+  Additional command-line arguments always passed to this agent.
+</ParamField>
+
+### Custom Model Definitions
+
+Define or override models in the registry using `[models.<name>]` sections:
+
+<ParamField path="models.<name>.description" type="string">
+  Human-readable description of the model.
+</ParamField>
+
+<ParamField path="models.<name>.provider" type="string">
+  Provider name (e.g., `anthropic`, `openai`, `custom`).
+</ParamField>
+
+<ParamField path="models.<name>.claude" type="string">
+  Model ID for Claude Code agent.
+</ParamField>
+
+<ParamField path="models.<name>.opencode" type="string">
+  Model ID for OpenCode agent.
+</ParamField>
+
+<ParamField path="models.<name>.codex" type="string">
+  Model ID for Codex agent.
+</ParamField>
+
+<ParamField path="models.<name>.cursor" type="string">
+  Model ID for Cursor agent.
+</ParamField>
+
+## Example Configuration
+
+Here's a complete example `harness.toml`:
+
+```toml
+# Global defaults
+default_agent = "claude"
+default_model = "sonnet"
+default_permissions = "full-access"
+default_timeout_secs = 300
+log_level = "warn"
+
+# Claude Code agent configuration
+[agents.claude]
+binary = "/usr/local/bin/claude"
+model = "sonnet"
+extra_args = ["--verbose"]
+
+# OpenCode agent configuration
+[agents.opencode]
+model = "sonnet"
+extra_args = ["--no-color"]
+
+# Codex agent configuration
+[agents.codex]
+model = "gpt-5-codex"
+extra_args = []
+
+# Custom model definitions
+[models.my-custom-model]
+description = "My custom fine-tuned model"
+provider = "anthropic"
+claude = "claude-3-5-sonnet-20241022-custom"
+opencode = "claude-3-5-sonnet-20241022-custom"
+
+[models.fast]
+description = "Fast model for quick tasks"
+provider = "anthropic"
+claude = "claude-3-5-haiku-20241022"
+opencode = "claude-3-5-haiku-20241022"
+```
+
+## Configuration Precedence
+
+Settings are resolved in the following priority order (highest to lowest):
+
+1. **Command-line flags** - `--agent`, `--model`, `--permissions`, `--timeout`, etc.
+2. **Project configuration** - `harness.toml` in current directory or parent directories
+3. **Legacy global configuration** - `~/.config/harness/config.toml`
+4. **Built-in defaults** - Auto-detection and sensible defaults
+
+Per-agent `extra_args` are concatenated (global first, then project, then CLI).
+
+## Configuration File Lookup
+
+Harness searches for `harness.toml` by walking up from the current working directory to the filesystem root. The first `harness.toml` found is used.
+
+For legacy support, harness also searches for `.harnessrc.toml` files in the same manner, but will emit a deprecation warning.
+
+<Info>
+  The `harness.toml` format is the recommended configuration method. Legacy `~/.config/harness/config.toml` and `.harnessrc.toml` files are deprecated.
+</Info>
+
+## Related Commands
+
+- [Output Formats](/guides/output-formats) - Configure output format in config or via `--output`
+- [Permissions](/guides/permissions) - Set default permission mode
+- [Timeout & Budget](/guides/timeout-budget) - Configure execution limits

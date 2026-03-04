@@ -1,0 +1,276 @@
+---
+title: harness run
+description: Run a task on a coding agent
+---
+
+Run a task on a coding agent (Claude Code, OpenCode, Codex, or Cursor).
+
+## Usage
+
+```bash
+harness run [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--agent" type="string" default="auto-detect">
+  Which agent to use: `claude`, `opencode`, `codex`, `cursor`
+  
+  If omitted, harness auto-detects based on installed agents or project config.
+</ParamField>
+
+<ParamField path="--prompt" type="string">
+  The prompt / task description
+  
+  Reads from stdin if omitted and stdin is piped.
+</ParamField>
+
+<ParamField path="--prompt-file" type="path">
+  Read prompt from a file instead of --prompt or stdin
+</ParamField>
+
+<ParamField path="--cwd" type="path">
+  Working directory for the agent
+  
+  Defaults to current directory.
+</ParamField>
+
+<ParamField path="--model" type="string">
+  Model to use (e.g. "sonnet", "opus", "gpt-5-codex")
+  
+  Resolved through the model registry.
+</ParamField>
+
+<ParamField path="--permissions" type="string" default="full-access">
+  Permission mode for the agent:
+  - `full-access`, `full`, `yolo`, `default`: Full file system access
+  - `read-only`, `readonly`, `plan`: Read-only access
+</ParamField>
+
+<ParamField path="--output" type="string" default="stream-json">
+  Output format:
+  - `stream-json` / `stream_json` / `ndjson`: NDJSON stream (default)
+  - `json`: Single JSON object at end
+  - `text`: Plain text deltas only
+  - `markdown` / `md`: Formatted markdown output
+</ParamField>
+
+<ParamField path="--max-turns" type="integer">
+  Maximum number of agentic turns
+</ParamField>
+
+<ParamField path="--max-budget" type="float">
+  Maximum spend in USD
+</ParamField>
+
+<ParamField path="--timeout" type="integer">
+  Timeout in seconds for the entire task
+</ParamField>
+
+<ParamField path="--system-prompt" type="string">
+  Custom system prompt (replaces the agent's default)
+</ParamField>
+
+<ParamField path="--append-system-prompt" type="string">
+  Append additional instructions to the default system prompt
+</ParamField>
+
+<ParamField path="--binary" type="path">
+  Override agent binary path
+  
+  By default, harness searches PATH for the agent binary.
+</ParamField>
+
+<ParamField path="--dry-run" type="boolean" default="false">
+  Print the resolved command without executing it
+  
+  Useful for debugging agent invocation.
+</ParamField>
+
+<ParamField path="--verbose" type="boolean" default="false">
+  Enable verbose (debug-level) logging to stderr
+  
+  Short flag: `-v`
+</ParamField>
+
+<ParamField path="--output-file" type="path">
+  Write output to a file in addition to stdout
+</ParamField>
+
+<ParamField path="extra" type="string[]">
+  Extra flags passed through to the agent verbatim
+  
+  All arguments after `--` are passed directly to the underlying agent.
+</ParamField>
+
+## Examples
+
+### Basic usage with prompt flag
+
+```bash
+harness run --prompt "Fix the type error in app.ts"
+```
+
+### Auto-detect agent, stream JSON output
+
+```bash
+harness run --prompt "Refactor the authentication module" --output stream-json
+```
+
+### Use specific agent and model
+
+```bash
+harness run --agent claude --model sonnet --prompt "Add unit tests"
+```
+
+### Read prompt from file
+
+```bash
+harness run --prompt-file task.txt --agent opencode
+```
+
+### Pipe prompt from stdin
+
+```bash
+echo "Document the API endpoints" | harness run --agent codex
+```
+
+```bash
+cat prompt.txt | harness run --output markdown
+```
+
+### Set working directory
+
+```bash
+harness run --cwd ~/projects/myapp --prompt "Fix linting errors"
+```
+
+### Limit turns and budget
+
+```bash
+harness run \
+  --prompt "Implement feature X" \
+  --max-turns 20 \
+  --max-budget 0.50
+```
+
+### Read-only mode (planning/analysis)
+
+```bash
+harness run --permissions read-only --prompt "Analyze the codebase structure"
+```
+
+### Custom system prompt
+
+```bash
+harness run \
+  --system-prompt "You are a senior Python developer focused on performance" \
+  --prompt "Optimize the data processing pipeline"
+```
+
+### Append to system prompt
+
+```bash
+harness run \
+  --append-system-prompt "Always add comprehensive JSDoc comments" \
+  --prompt "Create a new util function for date formatting"
+```
+
+### Dry run (see resolved command)
+
+```bash
+harness run --dry-run --agent claude --model opus --prompt "test"
+```
+
+### Save output to file
+
+```bash
+harness run \
+  --prompt "Generate a README" \
+  --output markdown \
+  --output-file result.md
+```
+
+### Pass extra flags to the agent
+
+```bash
+harness run --prompt "Build the project" -- --custom-flag --extra-arg=value
+```
+
+### Verbose logging
+
+```bash
+harness run -v --prompt "Debug the authentication flow"
+```
+
+## Configuration precedence
+
+Options are resolved in this order (highest to lowest priority):
+
+1. CLI flags (`--agent`, `--model`, etc.)
+2. Project config (`harness.toml` in current directory)
+3. Global config (`~/.config/harness/config.toml`)
+4. Auto-detection (for `--agent`)
+5. Built-in defaults
+
+## Output formats
+
+### stream-json (default)
+
+Newline-delimited JSON events streamed in real-time:
+
+```json
+{"type":"session_start","session_id":"abc123","agent":"claude","model":"claude-sonnet-4-20250514"}
+{"type":"text_delta","text":"I'll help you"}
+{"type":"tool_start","tool_name":"read","call_id":"call_1"}
+{"type":"result","success":true,"text":"Task completed"}
+```
+
+### json
+
+Single JSON object after task completes:
+
+```json
+{
+  "type": "result",
+  "success": true,
+  "result": "Task completed successfully",
+  "session_id": "abc123"
+}
+```
+
+### text
+
+Plain text deltas and messages only:
+
+```
+I'll help you fix the type error.
+
+Let me read the file first...
+
+I've fixed the error by adding proper type annotations.
+```
+
+### markdown
+
+Formatted markdown with headers and tool calls:
+
+```markdown
+# harness session — Claude Code
+
+**Model:** claude-sonnet-4-20250514
+
+---
+
+### Assistant
+
+I'll help you fix the type error.
+
+> **Tool:** `read` (call_1)
+```
+
+## Exit codes
+
+- **0**: Task completed successfully
+- **1**: Task failed or encountered an error
+- **2**: Invalid arguments or configuration

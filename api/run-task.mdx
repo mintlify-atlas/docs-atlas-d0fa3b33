@@ -1,0 +1,308 @@
+---
+title: "run_task"
+description: "Execute agent tasks and get event streams"
+---
+
+## Overview
+
+The `run_task` functions are the main entry points for executing coding agent tasks. They create a runner for the specified agent and return a stream of unified events.
+
+## Functions
+
+### run_task()
+
+Simple API for running tasks without cancellation support.
+
+```rust
+pub async fn run_task(config: &TaskConfig) -> Result<EventStream>
+```
+
+<ParamField path="config" type="&TaskConfig" required>
+  Task configuration containing prompt, agent, and all options.
+</ParamField>
+
+<ResponseField name="EventStream" type="Pin<Box<dyn Stream<Item = Result<Event>> + Send>>">
+  A pinned, boxed stream of `Result<Event>` items. Use with `futures::StreamExt` to consume events.
+</ResponseField>
+
+**Example:**
+
+```rust
+use harness::{AgentKind, TaskConfig};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> harness::Result<()> {
+    let config = TaskConfig::new("fix the bug in main.rs", AgentKind::Claude);
+    let mut stream = harness::run_task(&config).await?;
+    
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(event) => println!("{}", event),
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+    
+    Ok(())
+}
+```
+
+### run_task_with_cancel()
+
+Run a task with cancellation support.
+
+```rust
+pub async fn run_task_with_cancel(
+    config: &TaskConfig,
+    cancel_token: Option<CancellationToken>,
+) -> Result<StreamHandle>
+```
+
+<ParamField path="config" type="&TaskConfig" required>
+  Task configuration containing prompt, agent, and all options.
+</ParamField>
+
+<ParamField path="cancel_token" type="Option<CancellationToken>">
+  Optional cancellation token. If `None`, a new one is created internally.
+</ParamField>
+
+<ResponseField name="StreamHandle">
+  A struct containing both the event stream and the cancellation token.
+  
+  ```rust
+  pub struct StreamHandle {
+      pub stream: EventStream,
+      pub cancel_token: CancellationToken,
+  }
+  ```
+</ResponseField>
+
+**Example with Cancellation:**
+
+```rust
+use harness::{AgentKind, TaskConfig, CancellationToken};
+use futures::StreamExt;
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> harness::Result<()> {
+    let config = TaskConfig::new("analyze the codebase", AgentKind::OpenCode);
+    
+    // Create a cancellation token
+    let cancel_token = CancellationToken::new();
+    let token_clone = cancel_token.clone();
+    
+    // Spawn a task to cancel after 30 seconds
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        token_clone.cancel();
+        println!("Cancelled after 30 seconds");
+    });
+    
+    // Run the task with the cancellation token
+    let handle = harness::run_task_with_cancel(&config, Some(cancel_token)).await?;
+    let mut stream = handle.stream;
+    
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(event) => println!("{}", event),
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                break;
+            }
+        }
+    }
+    
+    Ok(())
+}
+```
+
+**Example with User-Triggered Cancellation:**
+
+```rust
+use harness::{AgentKind, TaskConfig};
+use futures::StreamExt;
+use tokio::signal;
+
+#[tokio::main]
+async fn main() -> harness::Result<()> {
+    let config = TaskConfig::builder("implement feature X", AgentKind::Claude)
+        .max_turns(20)
+        .build();
+    
+    let handle = harness::run_task_with_cancel(&config, None).await?;
+    let mut stream = handle.stream;
+    let cancel = handle.cancel_token;
+    
+    // Cancel on Ctrl+C
+    tokio::spawn(async move {
+        signal::ctrl_c().await.ok();
+        cancel.cancel();
+        println!("\nCancelling task...");
+    });
+    
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(event) => println!("{}", event),
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+    
+    Ok(())
+}
+```
+
+## Event Stream Consumption
+
+The returned `EventStream` is a Rust async stream. Use `futures::StreamExt` to consume it.
+
+### Filter Specific Event Types
+
+```rust
+use harness::{Event, TaskConfig, AgentKind};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> harness::Result<()> {
+    let config = TaskConfig::new("write a function", AgentKind::Claude);
+    let mut stream = harness::run_task(&config).await?;
+    
+    while let Some(Ok(event)) = stream.next().await {
+        match event {
+            Event::TextDelta(delta) => {
+                print!("{}", delta.text);
+            }
+            Event::ToolStart(tool) => {
+                println!("\n[Tool: {}]", tool.tool_name);
+            }
+            Event::Result(result) => {
+                println!("\n\nFinal result: {}", result.text);
+                if let Some(cost) = result.total_cost_usd {
+                    println!("Total cost: ${:.4}", cost);
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    Ok(())
+}
+```
+
+### Collect All Events
+
+```rust
+use harness::{Event, TaskConfig, AgentKind};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> harness::Result<()> {
+    let config = TaskConfig::new("explain this code", AgentKind::OpenCode);
+    let stream = harness::run_task(&config).await?;
+    
+    // Collect all events (be careful with large streams)
+    let events: Vec<Event> = stream
+        .filter_map(|r| async move { r.ok() })
+        .collect()
+        .await;
+    
+    // Analyze collected events
+    for event in &events {
+        if let Event::ToolStart(tool) = event {
+            println!("Tool used: {}", tool.tool_name);
+        }
+    }
+    
+    // Calculate total cost
+    let total_cost = harness::event::sum_costs(&events);
+    println!("Total cost: ${:.4}", total_cost);
+    
+    Ok(())
+}
+```
+
+### Process Events in Real-Time
+
+```rust
+use harness::{Event, TaskConfig, AgentKind};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> harness::Result<()> {
+    let config = TaskConfig::new("refactor this module", AgentKind::Codex);
+    let mut stream = harness::run_task(&config).await?;
+    
+    let mut current_text = String::new();
+    let mut tool_count = 0;
+    
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(Event::SessionStart(session)) => {
+                println!("Session {} started with {}", session.session_id, session.agent);
+            }
+            Ok(Event::TextDelta(delta)) => {
+                current_text.push_str(&delta.text);
+                print!("{}", delta.text);
+                std::io::Write::flush(&mut std::io::stdout()).ok();
+            }
+            Ok(Event::ToolStart(_)) => {
+                tool_count += 1;
+            }
+            Ok(Event::Result(result)) => {
+                println!("\n\n=== Task completed ===");
+                println!("Success: {}", result.success);
+                println!("Tools used: {}", tool_count);
+                if let Some(duration) = result.duration_ms {
+                    println!("Duration: {}ms", duration);
+                }
+            }
+            Ok(Event::Error(err)) => {
+                eprintln!("\nError: {}", err.message);
+                break;
+            }
+            _ => {}
+        }
+    }
+    
+    Ok(())
+}
+```
+
+## Error Handling
+
+Both functions return `Result<T>` where errors can occur during:
+
+- **Binary not found**: The agent binary is not in PATH and no `binary_path` was provided
+- **Spawn failed**: Could not start the agent subprocess
+- **Process failed**: Agent process exited with non-zero status
+- **I/O errors**: Problems reading from the subprocess
+
+```rust
+use harness::{Error, TaskConfig, AgentKind};
+
+#[tokio::main]
+async fn main() {
+    let config = TaskConfig::new("test", AgentKind::Claude);
+    
+    match harness::run_task(&config).await {
+        Ok(mut stream) => {
+            // Handle stream...
+        }
+        Err(Error::BinaryNotFound { agent, binary }) => {
+            eprintln!("{} not found. Install {} or set binary_path.", agent, binary);
+        }
+        Err(Error::SpawnFailed(e)) => {
+            eprintln!("Could not start agent: {}", e);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+        }
+    }
+}
+```
+
+## See Also
+
+- [TaskConfig](/api/task-config) - Configuration options
+- [Event Types](/api/event-types) - All event variants
+- [AgentRunner](/api/agent-runner) - Implement custom runners

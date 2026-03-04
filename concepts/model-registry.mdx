@@ -1,0 +1,306 @@
+---
+title: "Model Registry"
+description: "How harness-cli resolves model aliases to agent-specific model IDs"
+---
+
+## Overview
+
+harness-cli provides a **model registry** that maps human-friendly model names (like `opus`) to the exact model ID strings expected by each agent CLI. This allows you to write portable configs that work across different agents.
+
+Instead of remembering:
+- Claude expects `claude-opus-4-6`
+- OpenCode expects `anthropic/claude-opus-4-6`
+- Cursor expects `claude-opus-4-6`
+
+You can just use `--model opus` and harness resolves it automatically.
+
+## 3-Tier Resolution
+
+When you specify a model name, harness resolves it using a 3-tier priority system:
+
+<Steps>
+  <Step title="Project models (harness.toml)">
+    **Highest priority:** Models defined in your project's `harness.toml`.
+
+    ```toml
+    [models.my-custom-sonnet]
+    description = "Fine-tuned Sonnet for our codebase"
+    provider = "anthropic"
+    claude = "claude-sonnet-4-5-20250929-custom"
+    opencode = "anthropic/claude-sonnet-4-5-20250929-custom"
+    ```
+
+    Project models override everything else. Use this for:
+    - Custom fine-tuned models
+    - Beta model IDs
+    - Company-specific model deployments
+  </Step>
+
+  <Step title="Cached registry (~/.harness/models.toml)">
+    **Medium priority:** A fresh copy of the canonical registry fetched from GitHub.
+
+    - **Location:** `~/.harness/models.toml`
+    - **TTL:** 24 hours
+    - **Source:** `https://github.com/harnessai/harness-cli/blob/main/models.toml`
+
+    harness automatically updates this cache once per day to pick up new model additions.
+  </Step>
+
+  <Step title="Builtin registry (compiled into binary)">
+    **Fallback:** The registry compiled into the harness binary at build time.
+
+    This ensures harness works offline and always has a baseline set of models.
+
+    ```rust
+    pub fn builtin() -> Self {
+        let content = include_str!("../models.toml");
+        toml::from_str(content).unwrap_or_default()
+    }
+    ```
+
+    **Source:** `src/models.rs:95-104`
+  </Step>
+</Steps>
+
+## ModelEntry Structure
+
+Each model in the registry is a `ModelEntry` with metadata and per-agent mappings:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct ModelEntry {
+    pub description: String,
+    pub provider: String,
+    pub claude: Option<String>,
+    pub codex: Option<String>,
+    pub opencode: Option<String>,
+    pub cursor: Option<String>,
+}
+```
+
+**Source:** `src/models.rs:7-29`
+
+### Example Entry
+
+From `models.toml:12-18`:
+
+```toml
+[models.opus]
+description = "Claude Opus 4.6"
+provider = "anthropic"
+claude = "claude-opus-4-6"
+opencode = "anthropic/claude-opus-4-6"
+cursor = "claude-opus-4-6"
+```
+
+<Note>
+  Not every agent needs a mapping. In this example, `codex` is `None` because Opus is not available via the Codex CLI.
+</Note>
+
+## Resolution Outcomes
+
+When resolving a model name, harness returns one of three outcomes:
+
+<Tabs>
+  <Tab title="Resolved">
+    **The model exists and the agent has a mapping.**
+
+    ```rust
+    ModelResolution::Resolved {
+        canonical_name: "opus".to_string(),
+        agent_id: "claude-opus-4-6".to_string(),
+    }
+    ```
+
+    harness passes `agent_id` to the agent CLI.
+  </Tab>
+
+  <Tab title="NoAgentMapping">
+    **The model exists but this agent doesn't support it.**
+
+    ```rust
+    ModelResolution::NoAgentMapping {
+        canonical_name: "opus".to_string(),
+    }
+    ```
+
+    harness passes the `canonical_name` as-is and warns the user.
+  </Tab>
+
+  <Tab title="Passthrough">
+    **The model is not in the registry.**
+
+    ```rust
+    ModelResolution::Passthrough {
+        raw: "my-custom-model-id".to_string(),
+    }
+    ```
+
+    harness assumes it's a raw model ID and passes it through unchanged. Use this for:
+    - Unreleased models
+    - Local model servers
+    - Direct model IDs (e.g. `gpt-5-codex-preview`)
+  </Tab>
+</Tabs>
+
+**Source:** `src/models.rs:68-91`, `src/models.rs:121-138`
+
+## Adding Custom Models
+
+You can add custom models in your project's `harness.toml`:
+
+```toml
+[models.my-gpt5]
+description = "GPT-5 Preview"
+provider = "openai"
+codex = "gpt-5-codex-preview"
+opencode = "openai/gpt-5-preview"
+
+[models.local-llama]
+description = "Local Llama 3.2"
+provider = "local"
+opencode = "localhost:8080/llama-3.2"
+```
+
+Now you can use `--model my-gpt5` or `--model local-llama` in your harness commands.
+
+## Registry Methods
+
+<Accordion title="resolve(name: &str, agent: AgentKind) -> ModelResolution">
+  Resolve a model name for a specific agent.
+
+  ```rust
+  let registry = ModelRegistry::builtin();
+  let resolution = registry.resolve("opus", AgentKind::Claude);
+  println!("Model ID: {}", resolution.model_id());
+  ```
+
+  **Source:** `src/models.rs:121-138`
+</Accordion>
+
+<Accordion title="names() -> Vec<&str>">
+  Get all model names in the registry (sorted).
+
+  ```rust
+  let registry = ModelRegistry::builtin();
+  for name in registry.names() {
+      println!("- {name}");
+  }
+  ```
+
+  **Source:** `src/models.rs:141-145`
+</Accordion>
+
+<Accordion title="models_for_agent(agent: AgentKind) -> Vec<(&str, &str)>">
+  Get all models that support a specific agent.
+
+  ```rust
+  let registry = ModelRegistry::builtin();
+  let claude_models = registry.models_for_agent(AgentKind::Claude);
+  for (name, model_id) in claude_models {
+      println!("{name} → {model_id}");
+  }
+  ```
+
+  **Source:** `src/models.rs:148-161`
+</Accordion>
+
+<Accordion title="merge(overrides: &ModelRegistry) -> ModelRegistry">
+  Merge two registries. `overrides` wins on conflicts.
+
+  ```rust
+  let builtin = ModelRegistry::builtin();
+  let project = ModelRegistry::from_toml(project_toml)?;
+  let merged = builtin.merge(&project);
+  ```
+
+  **Source:** `src/models.rs:112-118`
+</Accordion>
+
+## CLI Commands
+
+<CodeGroup>
+
+```bash List all models
+harness models list
+```
+
+```bash List models for a specific agent
+harness models list --agent claude
+```
+
+```bash Resolve a model name
+harness models resolve opus --agent claude
+# Output: claude-opus-4-6
+
+harness models resolve opus --agent codex
+# Output: [warning] opus not available for codex
+# Falling back to: opus
+```
+
+```bash Show model info
+harness models info opus
+# Output:
+# Name: opus
+# Description: Claude Opus 4.6
+# Provider: anthropic
+# Supported agents:
+#   claude → claude-opus-4-6
+#   opencode → anthropic/claude-opus-4-6
+#   cursor → claude-opus-4-6
+```
+
+</CodeGroup>
+
+See [CLI Reference: models](/cli/models) for full command documentation.
+
+## Builtin Models
+
+The default registry currently includes:
+
+<CodeGroup>
+
+```toml models.toml
+[models.opus]
+description = "Claude Opus 4.6"
+provider = "anthropic"
+claude = "claude-opus-4-6"
+opencode = "anthropic/claude-opus-4-6"
+cursor = "claude-opus-4-6"
+```
+
+</CodeGroup>
+
+**Source:** `models.toml:12-18`
+
+<Note>
+  The canonical registry is maintained at [`github.com/harnessai/harness-cli/models.toml`](https://github.com/harnessai/harness-cli/blob/main/models.toml). New models are added as they become available.
+</Note>
+
+## Model ID Formats by Agent
+
+Each agent expects model IDs in a specific format:
+
+| Agent | Format | Example |
+|-------|--------|----------|
+| **Claude** | `claude-{model}-{version}` | `claude-opus-4-6` |
+| **Codex** | `gpt-{version}-codex` or custom | `gpt-5-codex` |
+| **OpenCode** | `{provider}/{model}` or short name | `anthropic/claude-opus-4-6` or `sonnet` |
+| **Cursor** | Same as Claude | `claude-sonnet-4-5` |
+
+## Related Concepts
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="robot" href="/concepts/agents">
+    Learn about the four supported agents
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Configure harness.toml for your project
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+- **Add a custom model:** Edit `harness.toml` in your project root
+- **View available models:** Run `harness models list`
+- **Test resolution:** Run `harness models resolve <name> --agent <agent>`

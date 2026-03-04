@@ -1,0 +1,523 @@
+---
+title: "Event Types"
+description: "Unified event stream types emitted by all agents"
+---
+
+## Overview
+
+The `Event` enum is the unified event stream format emitted by all agent adapters. Every agent translates its native output into these events, providing a consistent interface regardless of which backend is running.
+
+## Event Enum
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Event {
+    SessionStart(SessionStartEvent),
+    TextDelta(TextDeltaEvent),
+    Message(MessageEvent),
+    ToolStart(ToolStartEvent),
+    ToolEnd(ToolEndEvent),
+    UsageDelta(UsageDeltaEvent),
+    Result(ResultEvent),
+    Error(ErrorEvent),
+}
+```
+
+## Event Variants
+
+### SessionStart
+
+Emitted when the agent session has been initialized.
+
+```rust
+pub struct SessionStartEvent {
+    pub session_id: String,
+    pub agent: String,
+    pub model: Option<String>,
+    pub cwd: Option<String>,
+    pub timestamp_ms: u64,
+}
+```
+
+<ResponseField name="session_id" type="String">
+  Unique identifier for this agent session.
+</ResponseField>
+
+<ResponseField name="agent" type="String">
+  Name of the agent backend (e.g., "Claude Code", "OpenCode").
+</ResponseField>
+
+<ResponseField name="model" type="Option<String>">
+  Model being used (e.g., "claude-opus-4-6").
+</ResponseField>
+
+<ResponseField name="cwd" type="Option<String>">
+  Working directory for the agent.
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Unix epoch timestamp in milliseconds.
+</ResponseField>
+
+**JSON Example:**
+
+```json
+{
+  "type": "session_start",
+  "session_id": "abc123",
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6",
+  "cwd": "/workspace/project",
+  "timestamp_ms": 1709568000000
+}
+```
+
+### TextDelta
+
+A streaming chunk of assistant text.
+
+```rust
+pub struct TextDeltaEvent {
+    pub text: String,
+    pub timestamp_ms: u64,
+}
+```
+
+<ResponseField name="text" type="String">
+  Incremental text chunk from the assistant.
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Unix epoch timestamp in milliseconds.
+</ResponseField>
+
+**JSON Example:**
+
+```json
+{
+  "type": "text_delta",
+  "text": "I'll help you fix that bug. Let me ",
+  "timestamp_ms": 1709568001000
+}
+```
+
+### Message
+
+A complete assistant message.
+
+```rust
+pub struct MessageEvent {
+    pub role: Role,
+    pub text: String,
+    pub usage: Option<UsageData>,
+    pub timestamp_ms: u64,
+}
+
+pub enum Role {
+    Assistant,
+    User,
+    System,
+}
+```
+
+<ResponseField name="role" type="Role">
+  Message role: `Assistant`, `User`, or `System`.
+</ResponseField>
+
+<ResponseField name="text" type="String">
+  Complete message text.
+</ResponseField>
+
+<ResponseField name="usage" type="Option<UsageData>">
+  Token usage and cost data for this message.
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Unix epoch timestamp in milliseconds.
+</ResponseField>
+
+**JSON Example:**
+
+```json
+{
+  "type": "message",
+  "role": "assistant",
+  "text": "I've found the issue in the authentication logic.",
+  "usage": {
+    "input_tokens": 1250,
+    "output_tokens": 420,
+    "cost_usd": 0.0234
+  },
+  "timestamp_ms": 1709568005000
+}
+```
+
+### ToolStart
+
+The agent is invoking a tool.
+
+```rust
+pub struct ToolStartEvent {
+    pub call_id: String,
+    pub tool_name: String,
+    pub input: Option<serde_json::Value>,
+    pub timestamp_ms: u64,
+}
+```
+
+<ResponseField name="call_id" type="String">
+  Unique identifier for this tool call (matches corresponding `ToolEnd`).
+</ResponseField>
+
+<ResponseField name="tool_name" type="String">
+  Name of the tool being invoked (e.g., "read", "edit", "bash").
+</ResponseField>
+
+<ResponseField name="input" type="Option<serde_json::Value>">
+  Tool input parameters as JSON.
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Unix epoch timestamp in milliseconds.
+</ResponseField>
+
+**JSON Example:**
+
+```json
+{
+  "type": "tool_start",
+  "call_id": "call_xyz789",
+  "tool_name": "read",
+  "input": {
+    "filePath": "/workspace/src/auth.rs"
+  },
+  "timestamp_ms": 1709568010000
+}
+```
+
+### ToolEnd
+
+A tool invocation has completed.
+
+```rust
+pub struct ToolEndEvent {
+    pub call_id: String,
+    pub tool_name: String,
+    pub success: bool,
+    pub output: Option<String>,
+    pub usage: Option<UsageData>,
+    pub timestamp_ms: u64,
+}
+```
+
+<ResponseField name="call_id" type="String">
+  Unique identifier matching the corresponding `ToolStart`.
+</ResponseField>
+
+<ResponseField name="tool_name" type="String">
+  Name of the tool that was invoked.
+</ResponseField>
+
+<ResponseField name="success" type="bool">
+  Whether the tool execution succeeded.
+</ResponseField>
+
+<ResponseField name="output" type="Option<String>">
+  Tool output or error message.
+</ResponseField>
+
+<ResponseField name="usage" type="Option<UsageData>">
+  Token usage if the tool triggered additional model calls.
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Unix epoch timestamp in milliseconds.
+</ResponseField>
+
+**JSON Example:**
+
+```json
+{
+  "type": "tool_end",
+  "call_id": "call_xyz789",
+  "tool_name": "read",
+  "success": true,
+  "output": "File contents...",
+  "timestamp_ms": 1709568011000
+}
+```
+
+### UsageDelta
+
+Incremental usage/cost update during streaming.
+
+```rust
+pub struct UsageDeltaEvent {
+    pub usage: UsageData,
+    pub timestamp_ms: u64,
+}
+```
+
+<ResponseField name="usage" type="UsageData">
+  Token usage and cost data.
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Unix epoch timestamp in milliseconds.
+</ResponseField>
+
+**JSON Example:**
+
+```json
+{
+  "type": "usage_delta",
+  "usage": {
+    "input_tokens": 1500,
+    "output_tokens": 250,
+    "cache_read_tokens": 8000,
+    "cache_creation_tokens": 2000,
+    "cost_usd": 0.0156
+  },
+  "timestamp_ms": 1709568015000
+}
+```
+
+### Result
+
+The agent run has finished.
+
+```rust
+pub struct ResultEvent {
+    pub success: bool,
+    pub text: String,
+    pub session_id: String,
+    pub duration_ms: Option<u64>,
+    pub total_cost_usd: Option<f64>,
+    pub usage: Option<UsageData>,
+    pub timestamp_ms: u64,
+}
+```
+
+<ResponseField name="success" type="bool">
+  Whether the task completed successfully.
+</ResponseField>
+
+<ResponseField name="text" type="String">
+  Final result message or summary.
+</ResponseField>
+
+<ResponseField name="session_id" type="String">
+  Session identifier matching `SessionStart`.
+</ResponseField>
+
+<ResponseField name="duration_ms" type="Option<u64>">
+  Total duration of the agent run in milliseconds.
+</ResponseField>
+
+<ResponseField name="total_cost_usd" type="Option<f64>">
+  Total cost in USD for the entire run.
+</ResponseField>
+
+<ResponseField name="usage" type="Option<UsageData>">
+  Total token usage for the run.
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Unix epoch timestamp in milliseconds.
+</ResponseField>
+
+**JSON Example:**
+
+```json
+{
+  "type": "result",
+  "success": true,
+  "text": "Successfully fixed the authentication bug in auth.rs",
+  "session_id": "abc123",
+  "duration_ms": 45000,
+  "total_cost_usd": 0.0823,
+  "usage": {
+    "input_tokens": 12500,
+    "output_tokens": 3200,
+    "cache_read_tokens": 45000,
+    "cost_usd": 0.0823
+  },
+  "timestamp_ms": 1709568060000
+}
+```
+
+### Error
+
+An error occurred during the run.
+
+```rust
+pub struct ErrorEvent {
+    pub message: String,
+    pub code: Option<String>,
+    pub timestamp_ms: u64,
+}
+```
+
+<ResponseField name="message" type="String">
+  Error message.
+</ResponseField>
+
+<ResponseField name="code" type="Option<String>">
+  Error code if available.
+</ResponseField>
+
+<ResponseField name="timestamp_ms" type="u64">
+  Unix epoch timestamp in milliseconds.
+</ResponseField>
+
+**JSON Example:**
+
+```json
+{
+  "type": "error",
+  "message": "API rate limit exceeded",
+  "code": "rate_limit_error",
+  "timestamp_ms": 1709568020000
+}
+```
+
+## UsageData
+
+Token usage and cost information.
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct UsageData {
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
+    pub cost_usd: Option<f64>,
+}
+```
+
+<ResponseField name="input_tokens" type="Option<u64>">
+  Number of input tokens.
+</ResponseField>
+
+<ResponseField name="output_tokens" type="Option<u64>">
+  Number of output tokens.
+</ResponseField>
+
+<ResponseField name="cache_read_tokens" type="Option<u64>">
+  Number of tokens read from cache (Anthropic prompt caching).
+</ResponseField>
+
+<ResponseField name="cache_creation_tokens" type="Option<u64>">
+  Number of tokens written to cache.
+</ResponseField>
+
+<ResponseField name="cost_usd" type="Option<f64>">
+  Estimated cost in USD.
+</ResponseField>
+
+## Event Helpers
+
+Utility functions for working with events:
+
+### sum_costs()
+
+Sum all cost_usd values from UsageDelta and Result events.
+
+```rust
+pub fn sum_costs(events: &[Event]) -> f64
+```
+
+**Example:**
+
+```rust
+use harness::event;
+
+let total_cost = event::sum_costs(&events);
+println!("Total cost: ${:.4}", total_cost);
+```
+
+### total_tokens()
+
+Sum all input and output tokens from UsageDelta events.
+
+```rust
+pub fn total_tokens(events: &[Event]) -> (u64, u64)
+```
+
+**Example:**
+
+```rust
+use harness::event;
+
+let (input, output) = event::total_tokens(&events);
+println!("Input: {}, Output: {}", input, output);
+```
+
+### extract_tool_calls()
+
+Extract paired ToolStart/ToolEnd events by call_id.
+
+```rust
+pub fn extract_tool_calls(events: &[Event]) -> Vec<(&ToolStartEvent, Option<&ToolEndEvent>)>
+```
+
+**Example:**
+
+```rust
+use harness::event;
+
+let tool_calls = event::extract_tool_calls(&events);
+for (start, end) in tool_calls {
+    println!("Tool: {}", start.tool_name);
+    if let Some(end_event) = end {
+        println!("  Success: {}", end_event.success);
+    }
+}
+```
+
+## Processing Events
+
+### Pattern Matching
+
+```rust
+use harness::Event;
+
+for event in events {
+    match event {
+        Event::SessionStart(e) => println!("Started: {}", e.session_id),
+        Event::TextDelta(e) => print!("{}", e.text),
+        Event::ToolStart(e) => println!("\n[{}]", e.tool_name),
+        Event::ToolEnd(e) if !e.success => eprintln!("Tool failed: {}", e.tool_name),
+        Event::Result(e) => println!("\nDone: ${:.4}", e.total_cost_usd.unwrap_or(0.0)),
+        Event::Error(e) => eprintln!("Error: {}", e.message),
+        _ => {}
+    }
+}
+```
+
+### Filtering Events
+
+```rust
+use harness::Event;
+
+// Get only tool events
+let tool_events: Vec<_> = events.iter()
+    .filter(|e| matches!(e, Event::ToolStart(_) | Event::ToolEnd(_)))
+    .collect();
+
+// Count successful tool calls
+let successful_tools = events.iter()
+    .filter_map(|e| match e {
+        Event::ToolEnd(t) if t.success => Some(t.tool_name.as_str()),
+        _ => None,
+    })
+    .count();
+```
+
+## See Also
+
+- [run_task()](/api/run-task) - Execute tasks and get event streams
+- [TaskConfig](/api/task-config) - Configuration options
+- [AgentRunner](/api/agent-runner) - Custom agent implementations

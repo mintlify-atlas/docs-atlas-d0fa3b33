@@ -1,0 +1,225 @@
+---
+title: Introduction
+description: Run any coding agent from a single CLI with unified event streaming
+---
+
+<div className="relative bg-gradient-to-br from-[#FF6B35] via-[#D9534F] to-[#8B2500] dark:from-[#FF6B35] dark:via-[#D9534F] dark:to-[#8B2500] py-20 overflow-hidden">
+  <div className="max-w-6xl mx-auto px-6 relative z-10">
+    <div className="grid lg:grid-cols-12 gap-12 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+          One CLI for all coding agents
+        </h1>
+        <p className="text-xl text-white/90 max-w-2xl mb-8">
+          Run Claude Code, OpenCode, Codex, or Cursor from a single interface. Write one integration, support every agent.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a href="/quickstart" className="inline-flex items-center px-6 py-3 bg-white text-[#FF6B35] font-semibold rounded-lg hover:bg-gray-100 transition-colors no-underline">
+            Get started →
+          </a>
+          <a href="/cli/run" className="inline-flex items-center px-6 py-3 border-2 border-white/30 bg-white/10 text-white font-semibold rounded-lg hover:bg-white/20 transition-colors no-underline">
+            View CLI reference
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 hidden lg:block">
+        <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+          <pre className="font-mono text-sm text-white/90 m-0">
+            <code className="text-white/60">{`# Run any agent`}</code>{`
+`}<code className="text-white/90">{`$ harness run --agent claude \\`}</code>{`
+`}<code className="ml-4">{`  --prompt "fix the bug"`}</code>{`
+
+`}<code className="text-green-300">{`✓ Session started`}</code>{`
+`}<code className="text-white/80">{`→ Streaming events...`}</code>
+          </pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Quick start
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get up and running with Harness in minutes
+  </p>
+
+  <Steps>
+    <Step title="Install Harness">
+      Install via curl or cargo:
+
+<CodeGroup>
+```bash curl
+curl -fsSL https://harness.lol/install.sh | sh
+```
+
+```bash cargo
+cargo install harnesscli
+```
+</CodeGroup>
+    </Step>
+
+    <Step title="Verify installation">
+      Check which agents are available on your system:
+
+      ```bash
+      harness list
+      ```
+
+      You'll see output like:
+
+      ```
+      Available agents:
+        - Claude Code (claude) [v1.2.3]
+        - OpenCode (opencode) [v0.8.1]
+      ```
+    </Step>
+
+    <Step title="Run your first task">
+      Execute a prompt with your preferred agent:
+
+      ```bash
+      harness run --agent claude --prompt "explain this codebase"
+      ```
+
+      Harness spawns the agent and streams unified NDJSON events to stdout.
+    </Step>
+
+    <Step title="Configure your project">
+      Create a `harness.toml` for project-level defaults:
+
+      ```bash
+      harness config init
+      ```
+
+      Then customize your settings:
+
+      ```toml
+      default_agent = "claude"
+      default_model = "opus"
+      default_permissions = "full-access"
+
+      [agents.claude]
+      model = "sonnet"
+      extra_args = ["--verbose"]
+      ```
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Explore by topic
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Dive deeper into Harness capabilities
+  </p>
+
+  <CardGroup cols={2}>
+    <Card title="Supported agents" icon="robot" href="/concepts/agents">
+      Learn about Claude Code, OpenCode, Codex, and Cursor integration
+    </Card>
+    <Card title="Event stream" icon="stream" href="/concepts/event-stream">
+      Understand the unified NDJSON event format
+    </Card>
+    <Card title="Model registry" icon="database" href="/concepts/model-registry">
+      Map human-friendly names to agent-specific model IDs
+    </Card>
+    <Card title="Configuration" icon="gear" href="/guides/configuration">
+      Set up project and global configuration files
+    </Card>
+    <Card title="Output formats" icon="code" href="/guides/output-formats">
+      Choose between text, JSON, markdown, and stream-json
+    </Card>
+    <Card title="Permissions & security" icon="shield" href="/guides/permissions">
+      Control agent access with permission modes
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Key features
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    What makes Harness powerful
+  </p>
+
+  <div className="grid md:grid-cols-2 gap-6">
+    <div className="border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] rounded-lg p-6">
+      <div className="text-2xl mb-3">🎯</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Unified interface
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Write one integration and support Claude Code, OpenCode, Codex, and Cursor automatically
+      </p>
+    </div>
+
+    <div className="border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] rounded-lg p-6">
+      <div className="text-2xl mb-3">📊</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Normalized events
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Every agent outputs the same 8 event types: SessionStart, TextDelta, Message, ToolStart, ToolEnd, UsageDelta, Result, Error
+      </p>
+    </div>
+
+    <div className="border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] rounded-lg p-6">
+      <div className="text-2xl mb-3">🏷️</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Model aliases
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Use friendly names like "opus" or "sonnet" — Harness resolves to agent-specific IDs
+      </p>
+    </div>
+
+    <div className="border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] rounded-lg p-6">
+      <div className="text-2xl mb-3">⚙️</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Project configuration
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Set defaults per project with harness.toml for consistent agent behavior
+      </p>
+    </div>
+
+    <div className="border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] rounded-lg p-6">
+      <div className="text-2xl mb-3">⏱️</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Timeouts & budgets
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Control costs and execution time with max_budget and timeout_secs
+      </p>
+    </div>
+
+    <div className="border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] rounded-lg p-6">
+      <div className="text-2xl mb-3">🦀</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Rust library
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Embed Harness as a library in your Rust applications with async streaming API
+      </p>
+    </div>
+  </div>
+</div>
+
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="bg-gradient-to-r from-[#FF6B35] to-[#D9534F] dark:from-[#FF6B35] dark:to-[#D9534F] rounded-2xl p-8 md:p-12 text-center">
+    <h2 className="text-3xl font-bold text-white mb-4">
+      Ready to get started?
+    </h2>
+    <p className="text-lg text-white/90 mb-6 max-w-2xl mx-auto">
+      Install Harness and start running coding agents in minutes
+    </p>
+    <a href="/installation" className="inline-flex items-center px-6 py-3 bg-white text-[#FF6B35] font-semibold rounded-lg hover:bg-gray-100 transition-colors no-underline">
+      Install now →
+    </a>
+  </div>
+</div>

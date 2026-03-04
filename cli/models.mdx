@@ -1,0 +1,355 @@
+---
+title: harness models
+description: Manage the model registry
+---
+
+Manage the model registry used to resolve model names across different agents.
+
+## Usage
+
+```bash
+harness models <subcommand>
+```
+
+## Subcommands
+
+### list
+
+List all models in the registry.
+
+```bash
+harness models list [OPTIONS]
+```
+
+**Options:**
+
+<ParamField path="--json" type="boolean" default="false">
+  Output as JSON instead of human-readable text
+</ParamField>
+
+<ParamField path="--agent" type="string">
+  Filter to models that have a mapping for this agent
+  
+  Values: `claude`, `opencode`, `codex`, `cursor`
+</ParamField>
+
+### update
+
+Force-fetch the latest registry from GitHub.
+
+```bash
+harness models update
+```
+
+Updates the cached model registry at `~/.harness/models.toml`.
+
+### resolve
+
+Resolve a model name for a specific agent.
+
+```bash
+harness models resolve <name> --agent <agent>
+```
+
+**Arguments:**
+
+<ParamField path="name" type="string" required>
+  The model name to resolve (e.g., "sonnet", "opus", "gpt-5-codex")
+</ParamField>
+
+**Options:**
+
+<ParamField path="--agent" type="string" required>
+  The agent to resolve for: `claude`, `opencode`, `codex`, `cursor`
+</ParamField>
+
+### path
+
+Print the path to the cached registry file.
+
+```bash
+harness models path
+```
+
+**Output:** Path to `~/.harness/models.toml`
+
+## Examples
+
+### List all models
+
+```bash
+harness models list
+```
+
+Output:
+```
+Model registry (12 models):
+
+  sonnet — Claude Sonnet 4
+    [anthropic] claude=claude-sonnet-4-20250514, opencode=claude-sonnet-4-20250514
+  opus — Claude Opus 4
+    [anthropic] claude=claude-opus-4-20250514, opencode=claude-opus-4-20250514
+  haiku — Claude Haiku
+    [anthropic] claude=claude-3-5-haiku-20241022, opencode=claude-3-5-haiku-20241022
+  gpt-5-codex — GPT-5 for Codex
+    [openai] codex=gpt-5-codex
+  ...
+```
+
+### List models (JSON)
+
+```bash
+harness models list --json
+```
+
+Output:
+```json
+[
+  {
+    "name": "sonnet",
+    "description": "Claude Sonnet 4",
+    "provider": "anthropic",
+    "claude": "claude-sonnet-4-20250514",
+    "opencode": "claude-sonnet-4-20250514"
+  },
+  {
+    "name": "opus",
+    "description": "Claude Opus 4",
+    "provider": "anthropic",
+    "claude": "claude-opus-4-20250514",
+    "opencode": "claude-opus-4-20250514"
+  }
+]
+```
+
+### Filter models by agent
+
+```bash
+harness models list --agent claude
+```
+
+Output:
+```
+Model registry (8 models):
+
+  sonnet — Claude Sonnet 4
+    [anthropic] claude=claude-sonnet-4-20250514, opencode=claude-sonnet-4-20250514
+  opus — Claude Opus 4
+    [anthropic] claude=claude-opus-4-20250514, opencode=claude-opus-4-20250514
+  ...
+```
+
+Only shows models that have a mapping for the `claude` agent.
+
+### Filter models by agent (JSON)
+
+```bash
+harness models list --agent codex --json
+```
+
+Output:
+```json
+[
+  {
+    "name": "gpt-5-codex",
+    "description": "GPT-5 for Codex",
+    "provider": "openai",
+    "codex": "gpt-5-codex"
+  }
+]
+```
+
+### Update the registry
+
+```bash
+harness models update
+```
+
+Output:
+```
+Fetched latest registry from GitHub and saved to /home/user/.harness/models.toml
+```
+
+### Resolve a model name
+
+```bash
+harness models resolve sonnet --agent claude
+```
+
+Output (stdout):
+```
+claude-sonnet-4-20250514
+```
+
+Output (stderr):
+```
+Resolved `sonnet` for Claude Code -> claude-sonnet-4-20250514
+```
+
+### Resolve with no mapping
+
+```bash
+harness models resolve gpt-5-codex --agent claude
+```
+
+Output (stdout):
+```
+gpt-5-codex
+```
+
+Output (stderr):
+```
+Model `gpt-5-codex` exists but has no mapping for Claude Code — passing through
+```
+
+### Resolve unknown model (passthrough)
+
+```bash
+harness models resolve my-custom-model --agent opencode
+```
+
+Output (stdout):
+```
+my-custom-model
+```
+
+Output (stderr):
+```
+Model `my-custom-model` not found in registry — passing through
+```
+
+### Get registry file path
+
+```bash
+harness models path
+```
+
+Output:
+```
+/home/user/.harness/models.toml
+```
+
+### Inspect the registry file
+
+```bash
+cat $(harness models path)
+```
+
+Output:
+```toml
+[sonnet]
+description = "Claude Sonnet 4"
+provider = "anthropic"
+claude = "claude-sonnet-4-20250514"
+opencode = "claude-sonnet-4-20250514"
+
+[opus]
+description = "Claude Opus 4"
+provider = "anthropic"
+claude = "claude-opus-4-20250514"
+opencode = "claude-opus-4-20250514"
+```
+
+## Model registry hierarchy
+
+Harness resolves model names through multiple registry sources:
+
+1. **Project config** - `[models]` section in `harness.toml`
+2. **Cached registry** - `~/.harness/models.toml` (fetched from GitHub)
+3. **Built-in registry** - Embedded fallback models
+4. **Passthrough** - Use the raw name as-is
+
+### Example workflow
+
+1. Use a model alias:
+
+```bash
+harness run --model sonnet --prompt "test"
+```
+
+2. Harness resolves `sonnet` → `claude-sonnet-4-20250514` for the current agent
+
+3. The resolved model ID is passed to the agent
+
+### Custom model mappings
+
+Add custom models in `harness.toml`:
+
+```toml
+[models.my-sonnet]
+description = "My custom Sonnet mapping"
+provider = "anthropic"
+claude = "claude-sonnet-4-20250514"
+opencode = "claude-sonnet-4-20250514"
+codex = "gpt-5-codex"
+```
+
+Now you can use:
+
+```bash
+harness run --model my-sonnet --prompt "test"
+```
+
+### Override registry models
+
+Project config models take precedence over the cached registry:
+
+```toml
+# In harness.toml
+[models.sonnet]
+claude = "claude-sonnet-3-5-20241022"  # Override to use older Sonnet
+```
+
+## Use cases
+
+### Check available models before running
+
+```bash
+harness models list --agent opencode
+harness run --agent opencode --model sonnet --prompt "test"
+```
+
+### Script model selection
+
+```bash
+#!/bin/bash
+# Get all models for claude agent
+models=$(harness models list --agent claude --json)
+echo "$models" | jq -r '.[].name'
+```
+
+### Verify model resolution
+
+```bash
+# See what model ID will actually be used
+harness models resolve opus --agent claude
+```
+
+### Keep registry up to date
+
+Periodically update the registry to get new models:
+
+```bash
+# Add to cron or CI
+harness models update
+```
+
+### Debug model resolution issues
+
+```bash
+# Check what's in the registry
+harness models list --json | jq '.[] | select(.name == "sonnet")'
+
+# See where registry is stored
+harness models path
+
+# Check resolution for each agent
+harness models resolve sonnet --agent claude
+harness models resolve sonnet --agent opencode
+harness models resolve sonnet --agent codex
+```
+
+## Related commands
+
+- [`harness run --model`](/cli/run) - Use a model when running a task
+- [`harness config`](/cli/config) - Manage configuration (including custom models)

@@ -1,0 +1,297 @@
+---
+title: Timeout & Budget Limits
+description: Control execution time and cost with timeout, budget, and turn limits
+---
+
+## Overview
+
+Harness provides three types of execution limits to prevent runaway agents and control costs:
+
+- **Timeout** - Maximum wall-clock time for execution
+- **Budget** - Maximum spend in USD
+- **Max turns** - Maximum number of agentic turns
+
+All limits support graceful cancellation with `SIGINT` (Ctrl+C).
+
+## Timeout
+
+Limit the total execution time in seconds:
+
+```bash
+harness run --prompt "analyze the codebase" --timeout 60
+```
+
+This runs for a maximum of 60 seconds before timing out.
+
+### Setting Default Timeout
+
+Configure a default timeout in `harness.toml`:
+
+```toml
+default_timeout_secs = 300  # 5 minutes
+```
+
+Or per-agent:
+
+```toml
+[agents.claude]
+model = "sonnet"
+extra_args = ["--timeout", "600"]
+```
+
+### Timeout Behavior
+
+When a timeout occurs:
+
+1. Harness sends a cancellation signal to the agent
+2. The agent attempts to gracefully shut down
+3. Output includes a timeout error message
+4. Exit code is non-zero (failure)
+
+**Example timeout output (stream-json):**
+```json
+{"type":"error","message":"timed out after 60s","code":"timeout"}
+```
+
+**Example timeout output (text/markdown):**
+```
+error: timed out after 60s
+```
+
+### Use Cases
+
+<CardGroup cols={2}>
+  <Card title="CI/CD" icon="gears">
+    Prevent build pipeline stalls with `--timeout 300`
+  </Card>
+  <Card title="Development" icon="code">
+    Quick iterations with `--timeout 60` for fast feedback
+  </Card>
+  <Card title="Long Tasks" icon="clock">
+    Complex refactoring with `--timeout 1800` (30 min)
+  </Card>
+  <Card title="Experiments" icon="flask">
+    Exploratory tasks with `--timeout 120` to avoid rabbit holes
+  </Card>
+</CardGroup>
+
+## Max Budget
+
+Limit the maximum spend in USD:
+
+```bash
+harness run --prompt "fix all the tests" --max-budget 0.50
+```
+
+This stops execution if the cost exceeds $0.50.
+
+<Note>
+  Budget limits depend on the agent's ability to track and report costs. Not all agents support budget limits.
+</Note>
+
+### Budget Tracking
+
+Harness tracks costs via `UsageDelta` events from the agent:
+
+- Input tokens × input token price
+- Output tokens × output token price
+- Cumulative cost is tracked across all turns
+
+### Use Cases
+
+- **Cost control**: Prevent expensive runs from getting out of hand
+- **Batch processing**: Set per-item budgets for consistent costs
+- **Experiments**: Limit exploration costs with `--max-budget 0.10`
+
+### Budget Exceeded Behavior
+
+When budget is exceeded:
+
+1. Agent receives cancellation signal
+2. Graceful shutdown begins
+3. Final cost is reported in usage statistics
+4. Exit code indicates failure
+
+## Max Turns
+
+Limit the maximum number of agentic turns (request-response cycles):
+
+```bash
+harness run --prompt "explore the codebase" --max-turns 5
+```
+
+This stops after 5 complete turns.
+
+### What is a "Turn"?
+
+A turn is one complete cycle of:
+
+1. Agent generates a response
+2. Agent uses tools (optional)
+3. Agent sends final message
+
+Multiple tool uses within a single response count as one turn.
+
+### Use Cases
+
+<AccordionGroup>
+  <Accordion title="Quick tasks">
+    Simple tasks that shouldn't require many iterations:
+    ```bash
+    harness run --prompt "add a docstring" --max-turns 1
+    ```
+  </Accordion>
+  
+  <Accordion title="Iterative refinement">
+    Allow multiple rounds of feedback:
+    ```bash
+    harness run --prompt "refactor with best practices" --max-turns 10
+    ```
+  </Accordion>
+  
+  <Accordion title="Preventing loops">
+    Stop agents from getting stuck in loops:
+    ```bash
+    harness run --prompt "fix the build" --max-turns 20
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Max Turns Exceeded
+
+When max turns is reached:
+
+1. Agent completes the current turn
+2. Execution stops naturally
+3. Final result includes partial progress
+4. Exit code depends on whether work completed
+
+## Combining Limits
+
+You can combine multiple limits for fine-grained control:
+
+```bash
+harness run \
+  --prompt "comprehensive refactoring" \
+  --timeout 600 \
+  --max-budget 1.00 \
+  --max-turns 25
+```
+
+Execution stops when **any** limit is reached.
+
+## Graceful Cancellation
+
+Press **Ctrl+C** (`SIGINT`) at any time to gracefully cancel execution:
+
+```bash
+harness run --prompt "long running task"
+# Press Ctrl+C to cancel
+^C
+```
+
+On cancellation:
+
+1. Harness sends cancellation token to agent
+2. Agent finishes current operation
+3. Partial results are returned
+4. Session log is saved
+5. Cost summary is displayed
+
+<Info>
+  Graceful cancellation ensures you don't lose work - partial results are preserved and costs are tracked.
+</Info>
+
+## Configuration Precedence
+
+Limits are resolved in this order (highest to lowest):
+
+1. **Command-line flags** - `--timeout`, `--max-budget`, `--max-turns`
+2. **Project configuration** - `default_timeout_secs` in `harness.toml`
+3. **Legacy configuration** - Settings in `~/.config/harness/config.toml`
+4. **No limit** - If nothing is specified, runs until completion
+
+## Examples
+
+### Fast Iteration
+
+```bash
+harness run --prompt "add tests for auth module" \
+  --timeout 30 \
+  --max-turns 3
+```
+
+Quick test generation with strict limits.
+
+### Cost-Controlled Refactoring
+
+```bash
+harness run --prompt "refactor the entire API layer" \
+  --max-budget 2.00 \
+  --timeout 1800
+```
+
+Allow up to 30 minutes and $2 for comprehensive changes.
+
+### CI/CD Integration
+
+```bash
+harness run \
+  --prompt "run security audit and fix issues" \
+  --timeout 300 \
+  --max-turns 15 \
+  --permissions full \
+  --output json > audit-results.json
+```
+
+Automated security fixes with strict time limits for CI environments.
+
+### Exploratory Analysis
+
+```bash
+harness run \
+  --prompt "analyze dependencies and suggest updates" \
+  --permissions read-only \
+  --max-turns 5 \
+  --timeout 120
+```
+
+Safe exploration with turn and time limits.
+
+## Monitoring Usage
+
+All output formats include usage statistics:
+
+**stream-json:**
+```json
+{"type":"usage_delta","usage":{"input_tokens":1200,"output_tokens":450,"cost_usd":0.023}}
+```
+
+**text/markdown (stderr):**
+```
+Total: 1.2k in / 450 out, $0.023, 2.1s
+```
+
+**json:**
+Included in final result object with cumulative totals.
+
+## Agent Support
+
+Limit support varies by agent:
+
+| Limit | Claude | OpenCode | Codex | Cursor |
+|-------|--------|----------|-------|--------|
+| Timeout | ✓ | ✓ | ✓ | ✓ |
+| Budget | ✓ | ✓ | ✓ | Varies |
+| Max Turns | ✓ | ✓ | ✓ | ✓ |
+
+Check agent capabilities:
+```bash
+harness check claude --capabilities
+```
+
+## Related
+
+- [Configuration](/guides/configuration) - Set default timeout values
+- [Permissions](/guides/permissions) - Additional safety controls
+- [Output Formats](/guides/output-formats) - View usage statistics in different formats

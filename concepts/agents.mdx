@@ -1,0 +1,238 @@
+---
+title: "Agents"
+description: "Learn about the four supported coding agents and how harness-cli selects them"
+---
+
+## Overview
+
+harness-cli supports four different coding agents, each with a unique CLI binary and set of capabilities. Every agent is wrapped by a unified adapter that translates its native streaming format into a common event stream.
+
+## Supported Agents
+
+<Tabs>
+  <Tab title="Claude Code">
+    **Binary:** `claude`
+
+    Claude Code is Anthropic's official coding agent CLI. It provides the most comprehensive feature set with full support for system prompts, budget controls, and multi-turn conversations.
+
+    ### Capabilities
+
+    - System prompt (custom and append)
+    - Budget controls (`--max-budget-usd`)
+    - Model selection
+    - Max turns limit
+    - Streaming with NDJSON output
+
+    ### Stream Format
+
+    ```json
+    {"type":"system","subtype":"init","session_id":"...","model":"...","cwd":"..."}
+    {"type":"assistant","message":{"role":"assistant","content":[...]}}
+    {"type":"user","message":{"role":"user","content":[...]}}
+    {"type":"result","subtype":"success","result":"...","duration_ms":1234}
+    ```
+
+    ### Invocation
+
+    ```bash
+    claude -p "<prompt>" --output-format stream-json --verbose
+    ```
+  </Tab>
+
+  <Tab title="Codex">
+    **Binary:** `codex`
+
+    OpenAI's Codex CLI provides code execution capabilities with a sandbox model for safety.
+
+    ### Capabilities
+
+    - Model selection
+    - Sandbox modes (read-only, danger-full-access)
+    - Command execution tracking
+    - File change events
+
+    <Note>
+      Codex does **not** support system prompts, budget controls, or max turns.
+    </Note>
+
+    ### Stream Format
+
+    ```json
+    {"type":"thread.started","thread_id":"th-123"}
+    {"type":"item.started","item":{"type":"command_execution","command":"ls"}}
+    {"type":"item.completed","item":{"type":"agent_message","text":"..."}}
+    {"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}
+    ```
+
+    ### Invocation
+
+    ```bash
+    codex exec --json "<prompt>"
+    ```
+  </Tab>
+
+  <Tab title="OpenCode">
+    **Binary:** `opencode`
+
+    OpenCode is an open-source coding agent with support for multiple AI providers.
+
+    ### Capabilities
+
+    - Model selection
+    - Agent modes (default, plan)
+    - Multi-provider support (Anthropic, OpenAI)
+    - Streaming JSON output
+
+    <Note>
+      OpenCode does **not** support system prompts, budget controls, or max turns.
+    </Note>
+
+    ### Stream Format
+
+    ```json
+    {"type":"step_start","sessionID":"ses_abc","part":{"type":"step-start"}}
+    {"type":"text","part":{"type":"text","text":"..."}}
+    {"type":"tool_use","part":{"callID":"toolu_01","tool":"bash","state":{...}}}
+    {"type":"step_finish","part":{"reason":"stop","cost":0.05,"tokens":{...}}}
+    ```
+
+    ### Invocation
+
+    ```bash
+    opencode run --format json "<prompt>"
+    ```
+  </Tab>
+
+  <Tab title="Cursor">
+    **Binary:** `cursor-agent` or `agent`
+
+    Cursor's agent CLI provides coding assistance with a focus on interactive development.
+
+    ### Capabilities
+
+    - Model selection
+    - Permission modes (default, plan)
+    - Tool call tracking
+    - Streaming JSON output
+
+    <Note>
+      Cursor does **not** support system prompts, budget controls, or max turns.
+    </Note>
+
+    ### Stream Format
+
+    ```json
+    {"type":"system","subtype":"init","session_id":"s-42","model":"..."}
+    {"type":"assistant","message":{"role":"assistant","content":[...]}}
+    {"type":"tool_call","subtype":"started","call_id":"c-1","tool_call":{...}}
+    {"type":"result","subtype":"success","result":"...","duration_ms":2000}
+    ```
+
+    ### Invocation
+
+    ```bash
+    agent -p --output-format stream-json "<prompt>"
+    ```
+  </Tab>
+</Tabs>
+
+## Agent Selection
+
+harness-cli determines which agent to use via a 3-step priority chain:
+
+<Accordion title="1. CLI Flag (--agent)">
+  **Highest priority:** Explicit agent selection via command-line flag.
+
+  ```bash
+  harness run --agent claude "fix the bug"
+  harness run --agent codex "refactor this code"
+  ```
+
+  The `--agent` flag always wins, even if the config file specifies a different agent.
+</Accordion>
+
+<Accordion title="2. Config File (harness.toml)">
+  **Medium priority:** Agent specified in your project's `harness.toml`.
+
+  ```toml
+  [agent]
+  default = "opencode"
+  ```
+
+  If no `--agent` flag is provided, harness uses the agent from your config.
+</Accordion>
+
+<Accordion title="3. Auto-Detect">
+  **Fallback:** If no agent is specified, harness auto-detects the first available binary in this order:
+
+  1. `claude`
+  2. `opencode`
+  3. `codex`
+  4. `cursor-agent` / `agent`
+
+  harness searches your `$PATH` for these binaries and uses the first one found.
+</Accordion>
+
+## AgentKind Enum
+
+All agents are represented internally by the `AgentKind` enum:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentKind {
+    Claude,
+    OpenCode,
+    Codex,
+    Cursor,
+}
+```
+
+**Source:** `src/config.rs:6-14`
+
+Each variant maps to a list of possible binary names:
+
+- **Claude** → `["claude"]`
+- **OpenCode** → `["opencode"]`
+- **Codex** → `["codex"]`
+- **Cursor** → `["cursor-agent", "agent"]`
+
+## Capabilities Table
+
+| Feature | Claude | Codex | OpenCode | Cursor |
+|---------|--------|-------|----------|--------|
+| System Prompt | ✅ | ❌ | ❌ | ❌ |
+| Append System Prompt | ✅ | ❌ | ❌ | ❌ |
+| Budget Control | ✅ | ❌ | ❌ | ❌ |
+| Model Selection | ✅ | ✅ | ✅ | ✅ |
+| Max Turns | ✅ | ❌ | ❌ | ❌ |
+
+**Source:** Extracted from `AgentCapabilities` in `claude.rs:98-106`, `codex.rs:81-89`, `opencode.rs:83-91`, `cursor.rs:80-88`
+
+## API Key Environment Variables
+
+Each agent reads API keys from specific environment variables:
+
+- **Claude:** `ANTHROPIC_API_KEY`
+- **Codex:** `OPENAI_API_KEY`
+- **OpenCode:** `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (provider-dependent)
+- **Cursor:** `CURSOR_API_KEY`
+
+**Source:** `src/config.rs:35-42`
+
+## Related CLI Commands
+
+- [`harness run --agent <AGENT>`](/cli/run) - Run a task with a specific agent
+- [`harness list`](/cli/list) - List available agents on your system
+- [`harness check <AGENT>`](/cli/check) - Show capabilities and version
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Event Stream" icon="stream" href="/concepts/event-stream">
+    Learn about the unified NDJSON event format
+  </Card>
+  <Card title="Model Registry" icon="database" href="/concepts/model-registry">
+    Understand model aliases and resolution
+  </Card>
+</CardGroup>

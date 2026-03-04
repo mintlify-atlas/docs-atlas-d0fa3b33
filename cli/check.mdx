@@ -1,0 +1,229 @@
+---
+title: harness check
+description: Check if a specific agent is available
+---
+
+Check if a specific coding agent is installed and available on your system.
+
+## Usage
+
+```bash
+harness check <agent> [OPTIONS]
+```
+
+## Arguments
+
+<ParamField path="agent" type="string" required>
+  Agent to check: `claude`, `opencode`, `codex`, or `cursor`
+</ParamField>
+
+## Options
+
+<ParamField path="--json" type="boolean" default="false">
+  Output as JSON instead of human-readable text
+</ParamField>
+
+<ParamField path="--capabilities" type="boolean" default="false">
+  Show agent capabilities (system prompt support, budget limits, etc.)
+</ParamField>
+
+<ParamField path="--diagnose" type="boolean" default="false">
+  Show diagnostic information:
+  - Binary path resolution
+  - PATH search candidates
+  - Environment variable status (API keys)
+</ParamField>
+
+## Examples
+
+### Basic check
+
+```bash
+harness check claude
+```
+
+Output:
+```
+Claude Code is available (v1.2.3)
+```
+
+Or if not found:
+```
+Claude Code is not available (binary `claude` not found in PATH)
+```
+
+### Check with JSON output
+
+```bash
+harness check opencode --json
+```
+
+Output:
+```json
+{
+  "agent": "opencode",
+  "display_name": "OpenCode",
+  "available": true,
+  "version": "v0.9.1"
+}
+```
+
+### Show capabilities
+
+```bash
+harness check claude --capabilities
+```
+
+Output:
+```
+Claude Code is available (v1.2.3)
+Capabilities:
+  system_prompt:        true
+  append_system_prompt: true
+  budget:               true
+  model:                true
+  max_turns:            true
+```
+
+### Show capabilities (JSON)
+
+```bash
+harness check codex --capabilities --json
+```
+
+Output:
+```json
+{
+  "agent": "codex",
+  "display_name": "Codex",
+  "available": true,
+  "version": "v2.1.0",
+  "capabilities": {
+    "supports_system_prompt": true,
+    "supports_append_system_prompt": false,
+    "supports_budget": true,
+    "supports_model": true,
+    "supports_max_turns": true
+  }
+}
+```
+
+### Diagnose installation
+
+```bash
+harness check claude --diagnose
+```
+
+Output:
+```
+Claude Code is available (v1.2.3)
+Diagnostics:
+  binary_path: /usr/local/bin/claude
+  candidates:  ["claude", "claude-code"]
+  ANTHROPIC_API_KEY: set
+```
+
+### Full diagnostic output (JSON)
+
+```bash
+harness check opencode --diagnose --json
+```
+
+Output:
+```json
+{
+  "agent": "opencode",
+  "display_name": "OpenCode",
+  "available": true,
+  "version": "v0.9.1",
+  "diagnostics": {
+    "binary_path": "/home/user/.local/bin/opencode",
+    "candidates": ["opencode", "ocode"],
+    "env": {
+      "ANTHROPIC_API_KEY": "set",
+      "OPENAI_API_KEY": "not set"
+    }
+  }
+}
+```
+
+### Combined flags
+
+```bash
+harness check cursor --capabilities --diagnose --json
+```
+
+Output:
+```json
+{
+  "agent": "cursor",
+  "display_name": "Cursor Agent",
+  "available": true,
+  "version": "v1.0.5",
+  "capabilities": {
+    "supports_system_prompt": false,
+    "supports_append_system_prompt": false,
+    "supports_budget": false,
+    "supports_model": true,
+    "supports_max_turns": false
+  },
+  "diagnostics": {
+    "binary_path": "/usr/bin/cursor-agent",
+    "candidates": ["cursor-agent", "cursor"],
+    "env": {}
+  }
+}
+```
+
+## Exit codes
+
+- **0**: Agent is available
+- **1**: Agent is not available (binary not found in PATH)
+- **2**: Invalid agent name
+
+## Use cases
+
+### Pre-flight check in scripts
+
+Verify an agent is available before running a task:
+
+```bash
+#!/bin/bash
+if harness check claude --json | jq -e '.available' > /dev/null; then
+  harness run --agent claude --prompt "Build the project"
+else
+  echo "Claude not available, falling back to OpenCode"
+  harness run --agent opencode --prompt "Build the project"
+fi
+```
+
+### Verify API keys
+
+Check if required API keys are set:
+
+```bash
+harness check claude --diagnose | grep "ANTHROPIC_API_KEY: set"
+```
+
+### CI/CD validation
+
+Ensure the correct agent is installed in CI:
+
+```yaml
+# .github/workflows/test.yml
+- name: Verify Codex installation
+  run: harness check codex
+```
+
+### Debug binary path issues
+
+Troubleshoot why an agent isn't being detected:
+
+```bash
+harness check opencode --diagnose
+```
+
+## Related commands
+
+- [`harness list`](/cli/list) - List all available agents
+- [`harness run`](/cli/run) - Run a task on an agent

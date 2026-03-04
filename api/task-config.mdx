@@ -1,0 +1,214 @@
+---
+title: "TaskConfig"
+description: "Core configuration struct for running agent tasks"
+---
+
+## Overview
+
+`TaskConfig` is the unified configuration struct that defines all parameters for running a coding agent task. It works across all supported agent backends (Claude, OpenCode, Codex, Cursor).
+
+## Type Definition
+
+```rust
+pub struct TaskConfig {
+    pub prompt: String,
+    pub agent: AgentKind,
+    pub cwd: Option<PathBuf>,
+    pub model: Option<String>,
+    pub permission_mode: PermissionMode,
+    pub output_format: OutputFormat,
+    pub max_turns: Option<u32>,
+    pub max_budget_usd: Option<f64>,
+    pub timeout_secs: Option<u64>,
+    pub system_prompt: Option<String>,
+    pub append_system_prompt: Option<String>,
+    pub binary_path: Option<PathBuf>,
+    pub env: HashMap<String, String>,
+    pub extra_args: Vec<String>,
+}
+```
+
+## Fields
+
+<ParamField path="prompt" type="String" required>
+  The prompt or instruction to send to the agent.
+</ParamField>
+
+<ParamField path="agent" type="AgentKind" required>
+  Which agent backend to use. One of:
+  - `AgentKind::Claude` - Claude Code
+  - `AgentKind::OpenCode` - OpenCode
+  - `AgentKind::Codex` - Codex
+  - `AgentKind::Cursor` - Cursor
+</ParamField>
+
+<ParamField path="cwd" type="Option<PathBuf>">
+  Working directory for the agent. Defaults to current directory.
+</ParamField>
+
+<ParamField path="model" type="Option<String>">
+  Model override (e.g. "sonnet", "gpt-5-codex", "claude-opus-4-6").
+</ParamField>
+
+<ParamField path="permission_mode" type="PermissionMode" default="FullAccess">
+  How to handle tool permission prompts:
+  - `PermissionMode::FullAccess` - Auto-approve everything (yolo mode)
+  - `PermissionMode::ReadOnly` - Agent cannot make changes (plan mode)
+</ParamField>
+
+<ParamField path="output_format" type="OutputFormat" default="StreamJson">
+  Desired output format:
+  - `OutputFormat::Text` - Plain text, final message only
+  - `OutputFormat::Json` - Structured result object
+  - `OutputFormat::StreamJson` - NDJSON stream (default)
+  - `OutputFormat::Markdown` - Human-readable transcript
+</ParamField>
+
+<ParamField path="max_turns" type="Option<u32>">
+  Maximum number of agentic turns before stopping.
+</ParamField>
+
+<ParamField path="max_budget_usd" type="Option<f64>">
+  Maximum spend in USD before stopping.
+</ParamField>
+
+<ParamField path="timeout_secs" type="Option<u64>">
+  Timeout in seconds for the entire run.
+</ParamField>
+
+<ParamField path="system_prompt" type="Option<String>">
+  Custom system prompt (replaces default).
+</ParamField>
+
+<ParamField path="append_system_prompt" type="Option<String>">
+  Custom system prompt to append to the default.
+</ParamField>
+
+<ParamField path="binary_path" type="Option<PathBuf>">
+  Override the agent binary path (instead of using PATH).
+</ParamField>
+
+<ParamField path="env" type="HashMap<String, String>" default="{}">
+  Additional environment variables to set for the agent process.
+</ParamField>
+
+<ParamField path="extra_args" type="Vec<String>" default="[]">
+  Extra agent-specific flags passed through verbatim.
+</ParamField>
+
+## Constructor
+
+### TaskConfig::new()
+
+Create a new `TaskConfig` with required fields and sensible defaults.
+
+```rust
+pub fn new(prompt: impl Into<String>, agent: AgentKind) -> Self
+```
+
+**Example:**
+
+```rust
+use harness::{TaskConfig, AgentKind};
+
+let config = TaskConfig::new("fix the bug in main.rs", AgentKind::Claude);
+```
+
+## Builder Pattern
+
+### TaskConfig::builder()
+
+Create a fluent builder for `TaskConfig`.
+
+```rust
+pub fn builder(prompt: impl Into<String>, agent: AgentKind) -> TaskConfigBuilder
+```
+
+### TaskConfigBuilder
+
+Fluent builder API for constructing `TaskConfig` instances.
+
+```rust
+pub struct TaskConfigBuilder {
+    config: TaskConfig,
+}
+```
+
+**Builder Methods:**
+
+- `cwd(impl Into<PathBuf>) -> Self`
+- `model(impl Into<String>) -> Self`
+- `permission_mode(PermissionMode) -> Self`
+- `read_only() -> Self` - Shortcut for `permission_mode(PermissionMode::ReadOnly)`
+- `output_format(OutputFormat) -> Self`
+- `max_turns(u32) -> Self`
+- `max_budget_usd(f64) -> Self`
+- `timeout_secs(u64) -> Self`
+- `system_prompt(impl Into<String>) -> Self`
+- `append_system_prompt(impl Into<String>) -> Self`
+- `binary_path(impl Into<PathBuf>) -> Self`
+- `env(impl Into<String>, impl Into<String>) -> Self`
+- `extra_arg(impl Into<String>) -> Self`
+- `extra_args(Vec<String>) -> Self`
+- `build() -> TaskConfig`
+
+**Example:**
+
+```rust
+use harness::{TaskConfig, AgentKind, PermissionMode};
+use std::time::Duration;
+
+let config = TaskConfig::builder("refactor the auth module", AgentKind::OpenCode)
+    .model("sonnet")
+    .cwd("/path/to/project")
+    .timeout_secs(300)
+    .max_turns(10)
+    .permission_mode(PermissionMode::ReadOnly)
+    .env("DEBUG", "1")
+    .build();
+```
+
+## Complete Example
+
+```rust
+use harness::{TaskConfig, AgentKind, PermissionMode};
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn main() -> harness::Result<()> {
+    // Simple constructor
+    let config = TaskConfig::new("fix the bug", AgentKind::Claude);
+    
+    // With builder pattern
+    let config = TaskConfig::builder("add unit tests", AgentKind::OpenCode)
+        .model("claude-opus-4-6")
+        .cwd("/workspace/my-project")
+        .max_turns(15)
+        .max_budget_usd(2.50)
+        .timeout_secs(600)
+        .permission_mode(PermissionMode::FullAccess)
+        .append_system_prompt("Be concise and focus on edge cases")
+        .env("RUST_LOG", "debug")
+        .build();
+    
+    // Run the task
+    let mut stream = harness::run_task(&config).await?;
+    
+    // Consume events
+    use futures::StreamExt;
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(e) => println!("Event: {:?}", e),
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+    
+    Ok(())
+}
+```
+
+## See Also
+
+- [run_task()](/api/run-task) - Execute tasks with TaskConfig
+- [Event Types](/api/event-types) - Understand event stream output
+- [AgentRunner](/api/agent-runner) - Custom agent implementations

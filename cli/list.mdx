@@ -1,0 +1,112 @@
+---
+title: harness list
+description: List available agents on your system
+---
+
+List all coding agents installed and available on your system.
+
+## Usage
+
+```bash
+harness list [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--json" type="boolean" default="false">
+  Output as JSON instead of human-readable text
+</ParamField>
+
+## Examples
+
+### List available agents (text)
+
+```bash
+harness list
+```
+
+Output:
+```
+Available agents:
+  - Claude Code (claude) [v1.2.3]
+  - OpenCode (opencode) [v0.9.1]
+  - Codex (codex) [v2.1.0]
+```
+
+### List available agents (JSON)
+
+```bash
+harness list --json
+```
+
+Output:
+```json
+[
+  {
+    "agent": "claude",
+    "display_name": "Claude Code",
+    "version": "v1.2.3"
+  },
+  {
+    "agent": "opencode",
+    "display_name": "OpenCode",
+    "version": "v0.9.1"
+  },
+  {
+    "agent": "codex",
+    "display_name": "Codex",
+    "version": "v2.1.0"
+  }
+]
+```
+
+### No agents found
+
+If no agents are installed:
+
+```bash
+harness list
+```
+
+Output:
+```
+No agents found. Install one of: claude, opencode, codex, cursor-agent
+```
+
+## Use cases
+
+### Check what's installed
+
+Quickly see which coding agents are available on your system:
+
+```bash
+harness list
+```
+
+### Script integration
+
+Use JSON output to programmatically detect available agents:
+
+```bash
+#!/bin/bash
+agents=$(harness list --json)
+if echo "$agents" | jq -e '.[] | select(.agent == "claude")' > /dev/null; then
+  echo "Claude is available"
+fi
+```
+
+### CI/CD checks
+
+Verify agent installation in CI pipelines:
+
+```yaml
+# .github/workflows/test.yml
+- name: Check for OpenCode
+  run: |
+    harness list --json | jq -e '.[] | select(.agent == "opencode")'
+```
+
+## Related commands
+
+- [`harness check`](/cli/check) - Check if a specific agent is available
+- [`harness run`](/cli/run) - Run a task on an agent

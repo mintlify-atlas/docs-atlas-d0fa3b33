@@ -1,0 +1,446 @@
+---
+title: "Event Stream"
+description: "Unified NDJSON event format that normalizes output from all agents"
+---
+
+## Overview
+
+harness-cli normalizes the streaming output from all four agents (Claude, Codex, OpenCode, Cursor) into a **unified event stream**. Every event is a JSON object written on its own line (NDJSON format).
+
+This abstraction allows you to write a single parser that works with any agent backend.
+
+## Event Enum
+
+All events are variants of the `Event` enum:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Event {
+    SessionStart(SessionStartEvent),
+    TextDelta(TextDeltaEvent),
+    Message(MessageEvent),
+    ToolStart(ToolStartEvent),
+    ToolEnd(ToolEndEvent),
+    UsageDelta(UsageDeltaEvent),
+    Result(ResultEvent),
+    Error(ErrorEvent),
+}
+```
+
+**Source:** `src/event.rs:31-57`
+
+## Event Types
+
+<Tabs>
+  <Tab title="SessionStart">
+    **Emitted:** Once at the beginning of a run.
+
+    Signals that the agent has initialized and provides session metadata.
+
+    ### Schema
+
+    ```json
+    {
+      "type": "session_start",
+      "session_id": "abc-123",
+      "agent": "claude",
+      "model": "claude-sonnet-4-5",
+      "cwd": "/home/user/project",
+      "timestamp_ms": 1770612126829
+    }
+    ```
+
+    ### Fields
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `session_id` | `string` | Unique identifier for this run |
+    | `agent` | `string` | Agent name (claude, codex, opencode, cursor) |
+    | `model` | `string?` | Model ID if available |
+    | `cwd` | `string?` | Working directory |
+    | `timestamp_ms` | `u64` | Unix epoch milliseconds |
+
+    **Source:** `src/event.rs:76-86`
+  </Tab>
+
+  <Tab title="TextDelta">
+    **Emitted:** During streaming as the agent generates text.
+
+    Represents a chunk of assistant text (incremental update).
+
+    ### Schema
+
+    ```json
+    {
+      "type": "text_delta",
+      "text": "Let me check the",
+      "timestamp_ms": 1770612127000
+    }
+    ```
+
+    ### Fields
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `text` | `string` | Partial text chunk |
+    | `timestamp_ms` | `u64` | Unix epoch milliseconds |
+
+    <Note>
+      To reconstruct the full message, concatenate all `TextDelta` events between two `Message` events.
+    </Note>
+
+    **Source:** `src/event.rs:88-93`
+  </Tab>
+
+  <Tab title="Message">
+    **Emitted:** When a complete message is sent or received.
+
+    Represents a full assistant, user, or system message.
+
+    ### Schema
+
+    ```json
+    {
+      "type": "message",
+      "role": "assistant",
+      "text": "I found the bug in src/main.rs:42",
+      "usage": {
+        "input_tokens": 1500,
+        "output_tokens": 250,
+        "cache_read_tokens": 800,
+        "cost_usd": 0.012
+      },
+      "timestamp_ms": 1770612128000
+    }
+    ```
+
+    ### Fields
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `role` | `"assistant" \| "user" \| "system"` | Message sender |
+    | `text` | `string` | Full message text |
+    | `usage` | `UsageData?` | Token counts and cost (optional) |
+    | `timestamp_ms` | `u64` | Unix epoch milliseconds |
+
+    **Source:** `src/event.rs:95-103`
+  </Tab>
+
+  <Tab title="ToolStart">
+    **Emitted:** When the agent begins invoking a tool.
+
+    Provides the tool name, call ID, and input parameters.
+
+    ### Schema
+
+    ```json
+    {
+      "type": "tool_start",
+      "call_id": "toolu_01abc",
+      "tool_name": "bash",
+      "input": {
+        "command": "git status"
+      },
+      "timestamp_ms": 1770612129000
+    }
+    ```
+
+    ### Fields
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `call_id` | `string` | Unique identifier for this tool call |
+    | `tool_name` | `string` | Name of the tool being invoked |
+    | `input` | `JSON?` | Tool input parameters |
+    | `timestamp_ms` | `u64` | Unix epoch milliseconds |
+
+    **Source:** `src/event.rs:123-131`
+  </Tab>
+
+  <Tab title="ToolEnd">
+    **Emitted:** When a tool invocation completes.
+
+    Provides the result (success/failure) and output.
+
+    ### Schema
+
+    ```json
+    {
+      "type": "tool_end",
+      "call_id": "toolu_01abc",
+      "tool_name": "bash",
+      "success": true,
+      "output": "On branch main\nnothing to commit",
+      "usage": {
+        "input_tokens": 50,
+        "output_tokens": 10
+      },
+      "timestamp_ms": 1770612130000
+    }
+    ```
+
+    ### Fields
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `call_id` | `string` | Matches the `ToolStart.call_id` |
+    | `tool_name` | `string` | Name of the tool |
+    | `success` | `bool` | Whether the tool succeeded |
+    | `output` | `string?` | Tool output or error message |
+    | `usage` | `UsageData?` | Token usage for this tool call |
+    | `timestamp_ms` | `u64` | Unix epoch milliseconds |
+
+    **Source:** `src/event.rs:133-144`
+  </Tab>
+
+  <Tab title="UsageDelta">
+    **Emitted:** Incrementally as token usage data becomes available.
+
+    Tracks token consumption and cost in real-time.
+
+    ### Schema
+
+    ```json
+    {
+      "type": "usage_delta",
+      "usage": {
+        "input_tokens": 2500,
+        "output_tokens": 150,
+        "cache_read_tokens": 1200,
+        "cache_creation_tokens": 300,
+        "cost_usd": 0.025
+      },
+      "timestamp_ms": 1770612131000
+    }
+    ```
+
+    ### UsageData Fields
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `input_tokens` | `u64?` | Prompt tokens consumed |
+    | `output_tokens` | `u64?` | Response tokens generated |
+    | `cache_read_tokens` | `u64?` | Tokens read from cache |
+    | `cache_creation_tokens` | `u64?` | Tokens written to cache |
+    | `cost_usd` | `f64?` | Estimated cost in USD |
+
+    <Note>
+      To get total usage, sum all `UsageDelta` events. The final `Result` event may also contain a cumulative `usage` field.
+    </Note>
+
+    **Source:** `src/event.rs:11-24`, `src/event.rs:147-152`
+  </Tab>
+
+  <Tab title="Result">
+    **Emitted:** Once at the end of a successful or failed run.
+
+    Provides the final result, session summary, and total metrics.
+
+    ### Schema
+
+    ```json
+    {
+      "type": "result",
+      "success": true,
+      "text": "Task completed successfully",
+      "session_id": "abc-123",
+      "duration_ms": 5420,
+      "total_cost_usd": 0.087,
+      "usage": {
+        "input_tokens": 8500,
+        "output_tokens": 720,
+        "cache_read_tokens": 3200,
+        "cost_usd": 0.087
+      },
+      "timestamp_ms": 1770612135000
+    }
+    ```
+
+    ### Fields
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `success` | `bool` | Whether the run succeeded |
+    | `text` | `string` | Final result message |
+    | `session_id` | `string` | Session identifier |
+    | `duration_ms` | `u64?` | Total run time in milliseconds |
+    | `total_cost_usd` | `f64?` | Total cost in USD |
+    | `usage` | `UsageData?` | Cumulative token usage |
+    | `timestamp_ms` | `u64` | Unix epoch milliseconds |
+
+    **Source:** `src/event.rs:154-167`
+  </Tab>
+
+  <Tab title="Error">
+    **Emitted:** When an error occurs during the run.
+
+    ### Schema
+
+    ```json
+    {
+      "type": "error",
+      "message": "rate limit exceeded",
+      "code": "rate_limit",
+      "timestamp_ms": 1770612132000
+    }
+    ```
+
+    ### Fields
+
+    | Field | Type | Description |
+    |-------|------|-------------|
+    | `message` | `string` | Human-readable error message |
+    | `code` | `string?` | Machine-readable error code |
+    | `timestamp_ms` | `u64` | Unix epoch milliseconds |
+
+    **Source:** `src/event.rs:169-176`
+  </Tab>
+</Tabs>
+
+## Agent Mapping
+
+Each agent adapter translates its native format into the unified event stream:
+
+<CodeGroup>
+
+```rust Claude (claude.rs)
+// Claude's "system" event → SessionStart
+{"type":"system","subtype":"init","session_id":"...","model":"..."}
+  ⟹ Event::SessionStart(SessionStartEvent { ... })
+
+// Claude's "assistant" message → Message + ToolStart events
+{"type":"assistant","message":{"content":[{"type":"text",...},{"type":"tool_use",...}]}}
+  ⟹ Event::Message(...) + Event::ToolStart(...)
+
+// Claude's "result" → Result
+{"type":"result","subtype":"success","result":"...","duration_ms":1234}
+  ⟹ Event::Result(ResultEvent { success: true, ... })
+```
+
+```rust Codex (codex.rs)
+// Codex's "thread.started" → SessionStart
+{"type":"thread.started","thread_id":"th-123"}
+  ⟹ Event::SessionStart(SessionStartEvent { session_id: "th-123", ... })
+
+// Codex's "item.completed" (agent_message) → Message
+{"type":"item.completed","item":{"type":"agent_message","text":"..."}}
+  ⟹ Event::Message(MessageEvent { ... })
+
+// Codex's "turn.completed" → UsageDelta + Result
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}
+  ⟹ Event::UsageDelta(...) + Event::Result(...)
+```
+
+```rust OpenCode (opencode.rs)
+// OpenCode's "step_start" → SessionStart
+{"type":"step_start","sessionID":"ses_abc","part":{"type":"step-start"}}
+  ⟹ Event::SessionStart(SessionStartEvent { session_id: "ses_abc", ... })
+
+// OpenCode's "text" → Message
+{"type":"text","part":{"text":"..."}}
+  ⟹ Event::Message(MessageEvent { ... })
+
+// OpenCode's "tool_use" → ToolStart + ToolEnd
+{"type":"tool_use","part":{"callID":"toolu_01","tool":"bash","state":{"status":"completed",...}}}
+  ⟹ Event::ToolStart(...) + Event::ToolEnd(...)
+
+// OpenCode's "step_finish" (reason=stop) → UsageDelta + Result
+{"type":"step_finish","part":{"reason":"stop","cost":0.05,"tokens":{...}}}
+  ⟹ Event::UsageDelta(...) + Event::Result(...)
+```
+
+```rust Cursor (cursor.rs)
+// Cursor's "system" (subtype=init) → SessionStart
+{"type":"system","subtype":"init","session_id":"s-42","model":"..."}
+  ⟹ Event::SessionStart(SessionStartEvent { ... })
+
+// Cursor's "assistant" → Message
+{"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}
+  ⟹ Event::Message(MessageEvent { ... })
+
+// Cursor's "tool_call" (started/completed) → ToolStart / ToolEnd
+{"type":"tool_call","subtype":"started","call_id":"c-1",...}
+  ⟹ Event::ToolStart(...)
+{"type":"tool_call","subtype":"completed","call_id":"c-1",...}
+  ⟹ Event::ToolEnd(...)
+
+// Cursor's "result" → Result
+{"type":"result","subtype":"success","result":"...","duration_ms":2000}
+  ⟹ Event::Result(ResultEvent { ... })
+```
+
+</CodeGroup>
+
+**Source:** Parse functions in `claude.rs:109-315`, `codex.rs:92-378`, `opencode.rs:94-353`, `cursor.rs:91-217`
+
+## Example NDJSON Output
+
+Here's what a typical harness run looks like as NDJSON:
+
+```json
+{"type":"session_start","session_id":"ses_abc123","agent":"claude","model":"claude-sonnet-4-5","cwd":"/home/user/project","timestamp_ms":1770612126829}
+{"type":"text_delta","text":"Let me ","timestamp_ms":1770612127000}
+{"type":"text_delta","text":"check the bug","timestamp_ms":1770612127050}
+{"type":"message","role":"assistant","text":"Let me check the bug in your code.","timestamp_ms":1770612127100}
+{"type":"tool_start","call_id":"toolu_01xyz","tool_name":"bash","input":{"command":"grep -n 'TODO' src/"},"timestamp_ms":1770612127200}
+{"type":"tool_end","call_id":"toolu_01xyz","tool_name":"bash","success":true,"output":"src/main.rs:42:// TODO fix this\n","timestamp_ms":1770612128000}
+{"type":"message","role":"assistant","text":"Found the issue at line 42. I'll fix it now.","timestamp_ms":1770612128500}
+{"type":"usage_delta","usage":{"input_tokens":2500,"output_tokens":180,"cache_read_tokens":1200,"cost_usd":0.032},"timestamp_ms":1770612129000}
+{"type":"result","success":true,"text":"Task completed","session_id":"ses_abc123","duration_ms":3171,"total_cost_usd":0.032,"usage":{"input_tokens":2500,"output_tokens":180,"cache_read_tokens":1200,"cost_usd":0.032},"timestamp_ms":1770612130000}
+```
+
+## Helper Functions
+
+The event stream module provides utility functions for aggregating data:
+
+<Accordion title="sum_costs(events: &[Event]) -> f64">
+  Sum all `cost_usd` values from `UsageDelta` and `Result` events.
+
+  ```rust
+  let total_cost = sum_costs(&events);
+  println!("Total: ${:.4}", total_cost);
+  ```
+
+  **Source:** `src/event.rs:181-199`
+</Accordion>
+
+<Accordion title="total_tokens(events: &[Event]) -> (u64, u64)">
+  Sum all input and output tokens from `UsageDelta` events.
+
+  ```rust
+  let (input, output) = total_tokens(&events);
+  println!("{input} in / {output} out");
+  ```
+
+  **Source:** `src/event.rs:201-216`
+</Accordion>
+
+<Accordion title="extract_tool_calls(events: &[Event]) -> Vec<(&ToolStartEvent, Option<&ToolEndEvent>)>">
+  Pair `ToolStart` and `ToolEnd` events by `call_id`.
+
+  ```rust
+  let tool_calls = extract_tool_calls(&events);
+  for (start, end) in tool_calls {
+      println!("Tool: {}, Success: {}", start.tool_name, end.map(|e| e.success));
+  }
+  ```
+
+  **Source:** `src/event.rs:218-237`
+</Accordion>
+
+## Related CLI Commands
+
+- [`harness run --output stream-json`](/cli/run) - Stream NDJSON events to stdout
+- [`harness run --output json`](/cli/run) - Get final result as JSON
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="robot" href="/concepts/agents">
+    Learn about the four supported agents
+  </Card>
+  <Card title="Model Registry" icon="database" href="/concepts/model-registry">
+    Understand model aliases and resolution
+  </Card>
+</CardGroup>

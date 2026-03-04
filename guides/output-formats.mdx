@@ -1,0 +1,212 @@
+---
+title: Output Formats
+description: Control how harness outputs results with text, JSON, NDJSON, and markdown formats
+---
+
+## Overview
+
+Harness supports four output formats to suit different use cases, from human-readable text to structured JSON for programmatic consumption.
+
+Specify the output format using the `--output` flag:
+
+```bash
+harness run --prompt "fix the bug" --output <format>
+```
+
+## Available Formats
+
+### stream-json (Default)
+
+**NDJSON (newline-delimited JSON) streaming format** - emits one JSON event per line as the agent executes.
+
+```bash
+harness run --prompt "analyze the codebase" --output stream-json
+```
+
+**Use cases:**
+- Real-time monitoring of agent progress
+- Building UIs that display live updates
+- Processing events as they occur
+- Logging detailed execution traces
+
+**Event types:**
+- `session_start` - Agent session begins
+- `message` - User or assistant messages
+- `text_delta` - Streaming text chunks
+- `tool_start` - Tool execution begins
+- `tool_end` - Tool execution completes
+- `usage_delta` - Token usage updates
+- `result` - Final result with success status
+- `error` - Error events
+
+**Example output:**
+```json
+{"type":"session_start","session_id":"abc123","agent":"Claude Code","model":"claude-3-5-sonnet-20241022"}
+{"type":"text_delta","text":"I'll analyze the codebase"}
+{"type":"tool_start","tool_name":"read","call_id":"call_1"}
+{"type":"tool_end","tool_name":"read","call_id":"call_1","success":true}
+{"type":"result","success":true,"text":"Analysis complete"}
+```
+
+### text
+
+**Plain text output** - only the final assistant message and text deltas.
+
+```bash
+harness run --prompt "explain this function" --output text
+```
+
+**Use cases:**
+- Simple command-line usage
+- Piping output to other tools
+- Human-readable results without extra formatting
+
+**Example output:**
+```
+This function implements a binary search algorithm. It takes a sorted array
+and a target value, returning the index if found or -1 otherwise.
+```
+
+Cost summary is printed to stderr:
+```
+Total: 1.2k in / 450 out, $0.003, 2.1s
+```
+
+### json
+
+**Single JSON result object** - waits for completion and emits one structured result.
+
+```bash
+harness run --prompt "fix the tests" --output json
+```
+
+**Use cases:**
+- Programmatic automation scripts
+- CI/CD pipelines that need structured results
+- Tools that process final output only
+
+**Example output:**
+```json
+{
+  "type": "result",
+  "success": true,
+  "result": "Fixed 3 failing tests by updating assertions",
+  "session_id": "session-123"
+}
+```
+
+### markdown
+
+**Formatted markdown transcript** - human-readable output with headings, code blocks, and formatting.
+
+```bash
+harness run --prompt "add error handling" --output markdown
+```
+
+Alternate alias:
+```bash
+harness run --prompt "add error handling" --output md
+```
+
+**Use cases:**
+- Documentation of agent sessions
+- Reviewing agent actions and decisions
+- Sharing results with teammates
+- Generating reports
+
+**Example output:**
+```markdown
+# harness session — Claude Code
+
+**Model:** claude-3-5-sonnet-20241022
+
+---
+
+### Assistant
+
+I'll add comprehensive error handling to the codebase.
+
+> **Tool:** `read` (call_1)
+```json
+{
+  "filePath": "/src/main.rs"
+}
+```
+> **Tool done:** `read` [ok]
+
+### Assistant
+
+I've added try-catch blocks and proper error propagation.
+
+---
+
+**Result:** Success
+
+Added error handling to 5 functions with proper error types.
+```
+
+## Aliases
+
+Some formats support multiple names:
+
+- `stream-json`, `stream_json`, `ndjson` - all refer to NDJSON streaming
+- `markdown`, `md` - both refer to markdown format
+
+## Combining with Output Files
+
+Save output to a file while also displaying to stdout:
+
+```bash
+harness run --prompt "review the code" \
+  --output markdown \
+  --output-file review.md
+```
+
+This "tees" the output - you see it in your terminal and it's saved to the file.
+
+## Setting Default Output Format
+
+The default output format is `stream-json`. You cannot currently set a different default in `harness.toml`, but you can:
+
+1. Create shell aliases:
+   ```bash
+   alias harness-text="harness run --output text"
+   alias harness-md="harness run --output markdown"
+   ```
+
+2. Use agent-specific `extra_args` in `harness.toml`:
+   ```toml
+   [agents.claude]
+   extra_args = ["--output", "text"]
+   ```
+
+## Output Format Selection Guide
+
+<CardGroup cols={2}>
+  <Card title="stream-json" icon="stream">
+    Real-time monitoring, event processing, detailed logs
+  </Card>
+  <Card title="text" icon="align-left">
+    Simple CLI usage, piping to other commands
+  </Card>
+  <Card title="json" icon="code">
+    Automation, CI/CD, programmatic integration
+  </Card>
+  <Card title="markdown" icon="file-lines">
+    Documentation, reports, human review
+  </Card>
+</CardGroup>
+
+## Error Handling
+
+Each format handles errors differently:
+
+- **stream-json**: Emits `{"type":"error","message":"..."}` events
+- **text**: Prints errors to stderr
+- **json**: Returns `{"type":"error","message":"..."}` object
+- **markdown**: Includes `> **Error:** ...` sections
+
+## Related
+
+- [Timeout & Budget](/guides/timeout-budget) - Set execution limits that affect result output
+- [Configuration](/guides/configuration) - Configure default settings

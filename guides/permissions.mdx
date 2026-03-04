@@ -1,0 +1,212 @@
+---
+title: Permission Modes
+description: Control filesystem access with full-access and read-only permission modes
+---
+
+## Overview
+
+Harness provides two permission modes to control how agents interact with your filesystem:
+
+- **full-access** - Unrestricted read and write access (default)
+- **read-only** - Agents can only read files, not modify them
+
+Permission modes are passed to the underlying agent and control tool approval behavior.
+
+## Permission Modes
+
+### full-access (Default)
+
+**Unrestricted access** - the agent can read, write, create, and delete files.
+
+```bash
+harness run --prompt "fix the bug" --permissions full-access
+```
+
+**Aliases:**
+- `full-access`
+- `full`
+- `yolo`
+- `default`
+
+All aliases are equivalent:
+```bash
+harness run --prompt "refactor the code" --permissions yolo
+harness run --prompt "refactor the code" --permissions full
+```
+
+<Warning>
+  Full-access mode allows the agent to make any changes to your filesystem. Always review changes before committing to version control.
+</Warning>
+
+**When to use:**
+- Active development and coding tasks
+- Refactoring and code modifications
+- File creation and deletion
+- Any task requiring write operations
+
+### read-only
+
+**Read-only access** - the agent can read files and analyze code but cannot make changes.
+
+```bash
+harness run --prompt "review this code" --permissions read-only
+```
+
+**Aliases:**
+- `read-only`
+- `readonly`
+- `plan`
+
+All aliases are equivalent:
+```bash
+harness run --prompt "analyze the architecture" --permissions readonly
+harness run --prompt "create a plan" --permissions plan
+```
+
+**When to use:**
+- Code reviews and analysis
+- Planning and exploration
+- Documentation research
+- Learning about a codebase
+- Generating plans before execution
+- Any task where you want to prevent modifications
+
+<Info>
+  Read-only mode is perfect for exploratory tasks or when you want to see the agent's recommendations without making changes.
+</Info>
+
+## Setting Permission Defaults
+
+### Command Line
+
+Specify permissions per run:
+
+```bash
+harness run --prompt "analyze dependencies" --permissions read-only
+```
+
+### Configuration File
+
+Set a default permission mode in `harness.toml`:
+
+```toml
+default_permissions = "read-only"
+```
+
+Or per-agent:
+
+```toml
+[agents.claude]
+model = "sonnet"
+extra_args = ["--permissions", "read-only"]
+```
+
+## Permission Precedence
+
+Permissions are resolved in this order (highest to lowest):
+
+1. **Command-line flag** - `--permissions`
+2. **Project configuration** - `default_permissions` in `harness.toml`
+3. **Legacy configuration** - `default_permissions` in `~/.config/harness/config.toml`
+4. **Built-in default** - `full-access`
+
+## Security Considerations
+
+<AccordionGroup>
+  <Accordion title="Full-access risks">
+    - Agent can modify any file in the working directory
+    - Can delete files and directories
+    - Can create new files with arbitrary content
+    - Can modify configuration files
+    
+    **Mitigation:**
+    - Use version control (git) to track changes
+    - Review diffs before committing
+    - Set appropriate working directories with `--cwd`
+    - Use read-only mode for untrusted or exploratory tasks
+  </Accordion>
+  
+  <Accordion title="Read-only limitations">
+    - Agent cannot create files
+    - Cannot modify existing code
+    - Cannot fix issues directly
+    - Can only provide recommendations
+    
+    **Workflow:**
+    1. Run in read-only mode to get a plan
+    2. Review the agent's suggestions
+    3. Run again in full-access mode to execute the plan
+  </Accordion>
+  
+  <Accordion title="Working directory isolation">
+    Use `--cwd` to limit the agent's scope:
+    
+    ```bash
+    harness run --cwd ./safe-directory --prompt "experiment" --permissions full
+    ```
+    
+    This restricts the agent to only the specified directory and its children.
+  </Accordion>
+</AccordionGroup>
+
+## Common Workflows
+
+### Plan-then-Execute
+
+1. **Planning phase** (read-only):
+   ```bash
+   harness run --prompt "create a plan to add auth" --permissions plan
+   ```
+
+2. **Review the plan** in the output
+
+3. **Execution phase** (full-access):
+   ```bash
+   harness run --prompt "implement the auth plan" --permissions full
+   ```
+
+### Safe Code Review
+
+```bash
+harness run --prompt "review the PR changes and suggest improvements" \
+  --permissions read-only \
+  --output markdown \
+  --output-file review.md
+```
+
+This generates a comprehensive review without modifying any code.
+
+### Exploratory Analysis
+
+```bash
+harness run --prompt "what are the main components of this codebase?" \
+  --permissions readonly \
+  --cwd ./src
+```
+
+Safe exploration that won't accidentally modify files.
+
+## How Permissions Work
+
+Harness passes the permission mode to the underlying agent via agent-specific flags:
+
+- **Claude Code**: Uses built-in permission controls
+- **OpenCode**: Passes through to tool approval system
+- **Codex**: Configures tool access permissions
+- **Cursor**: Applies permission restrictions
+
+The exact implementation depends on the agent, but the behavior is consistent across all agents.
+
+## Unknown Permission Modes
+
+If you specify an invalid permission mode, harness will error:
+
+```bash
+harness run --prompt "test" --permissions invalid
+# error: unknown permission mode: `invalid` (expected: full-access, read-only)
+```
+
+## Related
+
+- [Configuration](/guides/configuration) - Set default permissions in config
+- [Timeout & Budget](/guides/timeout-budget) - Other safety controls

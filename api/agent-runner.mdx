@@ -1,0 +1,447 @@
+---
+title: "AgentRunner"
+description: "Trait for implementing custom agent adapters"
+---
+
+## Overview
+
+The `AgentRunner` trait defines the interface for agent adapters. Each supported agent (Claude, OpenCode, Codex, Cursor) implements this trait to translate unified `TaskConfig` into agent-specific CLI invocations and convert native output into unified `Event` streams.
+
+## AgentRunner Trait
+
+```rust
+#[async_trait]
+pub trait AgentRunner: Send + Sync {
+    fn name(&self) -> &str;
+    fn is_available(&self) -> bool;
+    fn binary_path(&self, config: &TaskConfig) -> Result<PathBuf>;
+    fn build_args(&self, config: &TaskConfig) -> Vec<String>;
+    fn build_env(&self, config: &TaskConfig) -> Vec<(String, String)>;
+    async fn run(
+        &self,
+        config: &TaskConfig,
+        cancel_token: Option<CancellationToken>,
+    ) -> Result<StreamHandle>;
+    fn version(&self, config: &TaskConfig) -> Option<String>;
+    fn capabilities(&self) -> AgentCapabilities;
+    fn validate_config(&self, config: &TaskConfig) -> Vec<ConfigWarning>;
+}
+```
+
+## Required Methods
+
+### name()
+
+Return the human-readable name of this agent backend.
+
+```rust
+fn name(&self) -> &str
+```
+
+**Example:**
+
+```rust
+fn name(&self) -> &str {
+    "Claude Code"
+}
+```
+
+### is_available()
+
+Check whether the agent binary is available on the system (in PATH).
+
+```rust
+fn is_available(&self) -> bool
+```
+
+**Example:**
+
+```rust
+fn is_available(&self) -> bool {
+    runner::is_any_binary_available(AgentKind::Claude)
+}
+```
+
+### binary_path()
+
+Resolve the binary path for this agent. Uses `config.binary_path` if provided, otherwise searches PATH.
+
+```rust
+fn binary_path(&self, config: &TaskConfig) -> Result<PathBuf>
+```
+
+**Example:**
+
+```rust
+fn binary_path(&self, config: &TaskConfig) -> Result<PathBuf> {
+    runner::resolve_binary(AgentKind::Claude, config)
+}
+```
+
+### build_args()
+
+Build the command-line arguments for the agent process based on the config.
+
+```rust
+fn build_args(&self, config: &TaskConfig) -> Vec<String>
+```
+
+**Example:**
+
+```rust
+fn build_args(&self, config: &TaskConfig) -> Vec<String> {
+    let mut args = vec![];
+    
+    // Add model if specified
+    if let Some(ref model) = config.model {
+        args.push("--model".to_string());
+        args.push(model.clone());
+    }
+    
+    // Add permission mode
+    if matches!(config.permission_mode, PermissionMode::ReadOnly) {
+        args.push("--read-only".to_string());
+    } else {
+        args.push("--yolo".to_string());
+    }
+    
+    // Add max turns
+    if let Some(turns) = config.max_turns {
+        args.push("--max-turns".to_string());
+        args.push(turns.to_string());
+    }
+    
+    // Add the prompt
+    args.push(config.prompt.clone());
+    
+    // Add extra args
+    args.extend(config.extra_args.clone());
+    
+    args
+}
+```
+
+### build_env()
+
+Build the environment variables for the agent process.
+
+```rust
+fn build_env(&self, config: &TaskConfig) -> Vec<(String, String)>
+```
+
+**Example:**
+
+```rust
+fn build_env(&self, config: &TaskConfig) -> Vec<(String, String)> {
+    let mut env = vec![];
+    
+    // Set output format
+    env.push(("OUTPUT_FORMAT".to_string(), "json".to_string()));
+    
+    // Disable color codes for parsing
+    env.push(("NO_COLOR".to_string(), "1".to_string()));
+    
+    env
+}
+```
+
+### run()
+
+Run the task and return a `StreamHandle` with the event stream and cancel token.
+
+```rust
+async fn run(
+    &self,
+    config: &TaskConfig,
+    cancel_token: Option<CancellationToken>,
+) -> Result<StreamHandle>
+```
+
+**Example:**
+
+```rust
+async fn run(
+    &self,
+    config: &TaskConfig,
+    cancel_token: Option<CancellationToken>,
+) -> Result<StreamHandle> {
+    // Use the shared process spawning infrastructure
+    process::spawn_and_stream(
+        self,
+        config,
+        |line| parse_claude_line(line),  // Agent-specific parser
+        cancel_token,
+    )
+    .await
+}
+
+// Agent-specific line parser
+fn parse_claude_line(line: &str) -> Vec<Result<Event>> {
+    match serde_json::from_str::<serde_json::Value>(line) {
+        Ok(json) => {
+            // Convert agent-specific JSON to Event enum
+            vec![Ok(Event::TextDelta(TextDeltaEvent {
+                text: json["text"].as_str().unwrap_or("").to_string(),
+                timestamp_ms: 0,
+            }))]
+        }
+        Err(e) => vec![Err(Error::ParseFailed(e.to_string()))],
+    }
+}
+```
+
+## Optional Methods
+
+### version()
+
+Get the version of the installed agent binary. Default implementation runs `{binary} --version`.
+
+```rust
+fn version(&self, config: &TaskConfig) -> Option<String>
+```
+
+**Example:**
+
+```rust
+let runner = agents::create_runner(AgentKind::Claude);
+let config = TaskConfig::new("test", AgentKind::Claude);
+
+if let Some(version) = runner.version(&config) {
+    println!("Claude version: {}", version);
+}
+```
+
+### capabilities()
+
+Describe which features this agent supports. Used for config validation.
+
+```rust
+fn capabilities(&self) -> AgentCapabilities
+```
+
+**Example:**
+
+```rust
+fn capabilities(&self) -> AgentCapabilities {
+    AgentCapabilities {
+        supports_system_prompt: true,
+        supports_budget: true,
+        supports_model: true,
+        supports_max_turns: true,
+        supports_append_system_prompt: false,
+    }
+}
+```
+
+### validate_config()
+
+Validate config against this agent's capabilities. Default implementation checks capabilities.
+
+```rust
+fn validate_config(&self, config: &TaskConfig) -> Vec<ConfigWarning>
+```
+
+**Example:**
+
+```rust
+let runner = agents::create_runner(AgentKind::Cursor);
+let config = TaskConfig::builder("test", AgentKind::Cursor)
+    .system_prompt("Custom prompt")
+    .build();
+
+let warnings = runner.validate_config(&config);
+for warning in warnings {
+    eprintln!("Warning: {}", warning);
+}
+```
+
+## AgentCapabilities
+
+Describes what features an agent supports.
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AgentCapabilities {
+    pub supports_system_prompt: bool,
+    pub supports_budget: bool,
+    pub supports_model: bool,
+    pub supports_max_turns: bool,
+    pub supports_append_system_prompt: bool,
+}
+```
+
+<ParamField path="supports_system_prompt" type="bool" default="false">
+  Whether the agent supports custom system prompts.
+</ParamField>
+
+<ParamField path="supports_budget" type="bool" default="false">
+  Whether the agent supports max_budget_usd limits.
+</ParamField>
+
+<ParamField path="supports_model" type="bool" default="false">
+  Whether the agent supports model selection.
+</ParamField>
+
+<ParamField path="supports_max_turns" type="bool" default="false">
+  Whether the agent supports limiting the number of turns.
+</ParamField>
+
+<ParamField path="supports_append_system_prompt" type="bool" default="false">
+  Whether the agent supports appending to the default system prompt.
+</ParamField>
+
+## Helper Functions
+
+### available_agents()
+
+List which agents are currently available on this system.
+
+```rust
+pub fn available_agents() -> Vec<AgentKind>
+```
+
+**Example:**
+
+```rust
+use harness::available_agents;
+
+let agents = available_agents();
+if agents.is_empty() {
+    eprintln!("No agents installed!");
+} else {
+    println!("Available agents:");
+    for agent in agents {
+        println!("  - {}", agent);
+    }
+}
+```
+
+### find_binary()
+
+Check if any of the binary candidates for the given agent exist in PATH.
+
+```rust
+pub fn find_binary(kind: AgentKind) -> Option<PathBuf>
+```
+
+**Example:**
+
+```rust
+use harness::runner::find_binary;
+use harness::AgentKind;
+
+if let Some(path) = find_binary(AgentKind::Claude) {
+    println!("Found Claude at: {:?}", path);
+}
+```
+
+### is_any_binary_available()
+
+Check if any binary candidate is available on the system.
+
+```rust
+pub fn is_any_binary_available(kind: AgentKind) -> bool
+```
+
+**Example:**
+
+```rust
+use harness::runner::is_any_binary_available;
+use harness::AgentKind;
+
+if is_any_binary_available(AgentKind::OpenCode) {
+    println!("OpenCode is installed");
+}
+```
+
+## Implementing a Custom Runner
+
+Here's a minimal example of implementing a custom agent runner:
+
+```rust
+use async_trait::async_trait;
+use harness::{
+    AgentCapabilities, AgentRunner, Event, StreamHandle,
+    TaskConfig, Result, process,
+};
+use std::path::PathBuf;
+use tokio_util::sync::CancellationToken;
+
+struct MyCustomRunner;
+
+#[async_trait]
+impl AgentRunner for MyCustomRunner {
+    fn name(&self) -> &str {
+        "My Custom Agent"
+    }
+
+    fn is_available(&self) -> bool {
+        which::which("my-agent").is_ok()
+    }
+
+    fn binary_path(&self, config: &TaskConfig) -> Result<PathBuf> {
+        if let Some(ref p) = config.binary_path {
+            return Ok(p.clone());
+        }
+        which::which("my-agent").map_err(|_| {
+            harness::Error::BinaryNotFound {
+                agent: "My Custom Agent".to_string(),
+                binary: "my-agent".to_string(),
+            }
+        })
+    }
+
+    fn build_args(&self, config: &TaskConfig) -> Vec<String> {
+        vec![
+            "--prompt".to_string(),
+            config.prompt.clone(),
+        ]
+    }
+
+    fn build_env(&self, _config: &TaskConfig) -> Vec<(String, String)> {
+        vec![]
+    }
+
+    async fn run(
+        &self,
+        config: &TaskConfig,
+        cancel_token: Option<CancellationToken>,
+    ) -> Result<StreamHandle> {
+        process::spawn_and_stream(
+            self,
+            config,
+            parse_my_agent_output,
+            cancel_token,
+        )
+        .await
+    }
+
+    fn capabilities(&self) -> AgentCapabilities {
+        AgentCapabilities {
+            supports_model: true,
+            supports_max_turns: true,
+            ..Default::default()
+        }
+    }
+}
+
+fn parse_my_agent_output(line: &str) -> Vec<Result<Event>> {
+    // Parse agent-specific output format and convert to Event
+    vec![]
+}
+
+// Usage
+#[tokio::main]
+async fn main() -> harness::Result<()> {
+    let config = TaskConfig::new("test prompt", AgentKind::Claude);
+    let runner = MyCustomRunner;
+    let handle = runner.run(&config, None).await?;
+    Ok(())
+}
+```
+
+## See Also
+
+- [TaskConfig](/api/task-config) - Configuration options
+- [run_task()](/api/run-task) - Execute tasks
+- [Event Types](/api/event-types) - Unified event stream format

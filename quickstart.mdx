@@ -1,80 +1,192 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Run your first coding agent task in under a minute"
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before you begin, make sure you have:
 
-### Step 1: Set up your local environment
+1. **Harness CLI installed** — see [Installation](/installation)
+2. **At least one agent installed** — run `harness list` to verify
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Info>
+If you don't have an agent installed yet, head to the [agent installation guide](/installation#system-requirements) to set one up.
+</Info>
 
-### Step 2: Deploy your changes
+## Run Your First Task
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Steps>
+  <Step title="Basic usage">
+    Run an agent with a simple prompt:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    harness run --agent claude --prompt "explain this codebase"
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    Harness will:
+    - Spawn the Claude Code agent as a subprocess
+    - Stream its output as unified NDJSON events
+    - Display the results to your terminal
+  </Step>
 
-### Step 3: Go live
+  <Step title="Understanding the output">
+    By default, Harness outputs **NDJSON** (newline-delimited JSON) — one event per line:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```json
+    {"type":"session_start","session_id":"session-1234","agent":"Claude Code","model":"claude-3-7-sonnet-20250219","timestamp_ms":1709548800000}
+    {"type":"text_delta","text":"Let me analyze","timestamp_ms":1709548801000}
+    {"type":"text_delta","text":" this codebase for you.","timestamp_ms":1709548801100}
+    {"type":"tool_start","call_id":"call_abc123","tool_name":"read_file","input":{"path":"README.md"},"timestamp_ms":1709548802000}
+    {"type":"tool_end","call_id":"call_abc123","tool_name":"read_file","success":true,"timestamp_ms":1709548803000}
+    {"type":"usage_delta","usage":{"input_tokens":1500,"output_tokens":250,"cost_usd":0.015},"timestamp_ms":1709548804000}
+    {"type":"result","success":true,"text":"This codebase implements...","session_id":"session-1234","duration_ms":4200,"total_cost_usd":0.015,"timestamp_ms":1709548805000}
+    ```
 
-## Next steps
+    <Note>
+    Each event has a `type` field indicating the event kind. See [Event Stream](/concepts/event-stream) for details on all event types.
+    </Note>
+  </Step>
 
-Now that you have your docs running, explore these key features:
+  <Step title="Use different output formats">
+    Change the output format with the `--output` flag:
+
+    <CodeGroup>
+
+    ```bash Text output
+    harness run --agent claude --prompt "hello" --output text
+    ```
+
+    ```bash JSON output
+    harness run --agent claude --prompt "hello" --output json
+    ```
+
+    ```bash Markdown output
+    harness run --agent claude --prompt "hello" --output markdown
+    ```
+
+    </CodeGroup>
+
+    - **`text`** — Only prints the final assistant message (clean, minimal)
+    - **`json`** — Single JSON object with the final result
+    - **`stream-json`** — NDJSON events as they happen (default)
+    - **`markdown`** — Human-readable transcript with headings and code blocks
+
+    <Tip>
+    Use `--output text` when piping Harness output to other tools, and `--output markdown` for human-readable logs.
+    </Tip>
+  </Step>
+</Steps>
+
+## Common Usage Patterns
+
+<CodeGroup>
+
+```bash Specify a model
+harness run --agent claude --model opus --prompt "fix the bug"
+```
+
+```bash Pipe prompt from stdin
+echo "explain this codebase" | harness run --agent claude
+```
+
+```bash Use a model alias
+harness run --agent claude --model sonnet --prompt "refactor this function"
+```
+
+```bash Dry-run to see the command
+harness run --agent claude --model sonnet --prompt "hello" --dry-run
+```
+
+</CodeGroup>
+
+## Understanding the Event Stream
+
+Harness translates each agent's native output into a unified event stream with 8 event types:
+
+| Event Type | Description |
+|------------|-------------|
+| `SessionStart` | Agent session initialized |
+| `TextDelta` | Streaming text chunk from the assistant |
+| `Message` | Complete message (user, assistant, or system) |
+| `ToolStart` | Agent is invoking a tool |
+| `ToolEnd` | Tool invocation completed |
+| `UsageDelta` | Incremental token usage and cost update |
+| `Result` | Final result of the agent run |
+| `Error` | An error occurred |
+
+<Info>
+Regardless of which agent backend you use (Claude, OpenCode, Codex, or Cursor), you always get the same event structure.
+</Info>
+
+## Example: Text Output Mode
+
+When you use `--output text`, you only see the final assistant message:
+
+```bash
+harness run --agent claude --prompt "what is 2+2" --output text
+```
+
+Output:
+
+```
+2 + 2 equals 4.
+```
+
+The cost summary is printed to stderr:
+
+```
+Total: 150 in / 10 out, $0.002, 1.2s
+```
+
+## Example: JSON Output Mode
+
+With `--output json`, you get a structured result object:
+
+```bash
+harness run --agent claude --prompt "what is 2+2" --output json
+```
+
+Output:
+
+```json
+{
+  "type": "result",
+  "success": true,
+  "result": "2 + 2 equals 4.",
+  "session_id": "session-1709548800000-12345"
+}
+```
+
+## Auto-Detection
+
+If you only have one agent installed, you can omit the `--agent` flag:
+
+```bash
+harness run --prompt "explain this file"
+```
+
+Harness will automatically detect and use the available agent.
+
+<Warning>
+If multiple agents are installed, you must specify which one to use with `--agent`, or set a default in your [configuration file](/guides/configuration).
+</Warning>
+
+## Next Steps
+
+Now that you've run your first task, explore these guides:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Set default agents, models, and options
+  </Card>
+  <Card title="Output Formats" icon="file-code" href="/guides/output-formats">
+    Learn about all output format options
+  </Card>
+  <Card title="Event Stream" icon="stream" href="/concepts/event-stream">
+    Deep dive into the unified event stream
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli/run">
+    Full command-line reference
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

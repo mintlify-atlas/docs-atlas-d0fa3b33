@@ -1,0 +1,188 @@
+---
+title: "Installation"
+description: "Install Harness CLI and verify your setup"
+---
+
+## System Requirements
+
+Harness CLI requires:
+
+- **Rust 1.80 or later** (if building from source)
+- At least one supported coding agent installed:
+  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`)
+  - [OpenCode](https://opencode.ai/) (`opencode`)
+  - [OpenAI Codex](https://github.com/openai/codex) (`codex`)
+  - [Cursor](https://cursor.com) (`cursor-agent` or `agent`)
+
+<Note>
+You don't need to install all agents — just the one(s) you want to use. Harness will auto-detect which agents are available on your system.
+</Note>
+
+## Install Methods
+
+Choose one of the following installation methods:
+
+<Steps>
+  <Step title="Recommended: curl installer">
+    The fastest way to get started:
+
+    ```bash
+    curl -fsSL https://harness.lol/install.sh | sh
+    ```
+
+    This script downloads the latest binary for your platform and installs it to `/usr/local/bin/harness`.
+  </Step>
+
+  <Step title="Via crates.io">
+    If you have Rust installed, you can install from crates.io:
+
+    ```bash
+    cargo install harnesscli
+    ```
+
+    <Info>
+    The package name on crates.io is `harnesscli`, but the binary is named `harness`.
+    </Info>
+  </Step>
+
+  <Step title="Build from source">
+    For the latest development version or to contribute:
+
+    ```bash
+    git clone https://github.com/ayshptk/harness-cli.git
+    cd harness-cli
+    cargo build --release
+    # Binary will be at target/release/harness
+    ```
+
+    You can then copy the binary to a directory in your `PATH`:
+
+    ```bash
+    sudo cp target/release/harness /usr/local/bin/
+    ```
+  </Step>
+</Steps>
+
+## Verify Installation
+
+After installation, verify that Harness is working:
+
+<CodeGroup>
+
+```bash Check version
+harness --version
+```
+
+```bash List available agents
+harness list
+```
+
+</CodeGroup>
+
+Expected output from `harness --version`:
+
+```
+harness 0.1.6
+```
+
+Expected output from `harness list`:
+
+```
+Available agents:
+  - Claude Code (claude) [unknown]
+  - OpenCode (opencode) [1.0.0]
+```
+
+<Info>
+The list will only show agents that are currently installed on your system. If you see "No agents found", you need to install at least one agent first.
+</Info>
+
+## Verify Agent Installation
+
+Check if a specific agent is properly configured:
+
+```bash
+harness check claude --capabilities
+```
+
+This will show:
+- Whether the agent binary is found
+- Version information
+- Supported capabilities (system prompts, budget controls, etc.)
+
+Example output:
+
+```
+Claude Code is available (unknown version)
+Capabilities:
+  system_prompt:        true
+  append_system_prompt: true
+  budget:               false
+  model:                true
+  max_turns:            false
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Agent binary not found">
+    If `harness check` reports that an agent is not available:
+
+    1. Verify the agent is installed and in your `PATH`:
+       ```bash
+       which claude
+       # or
+       which opencode
+       ```
+
+    2. Use the `--diagnose` flag for detailed information:
+       ```bash
+       harness check claude --diagnose
+       ```
+
+    This will show:
+    - The binary path being searched
+    - All candidate binary names
+    - Environment variable status for API keys
+  </Accordion>
+
+  <Accordion title="API key not set">
+    Some agents require API keys to be set as environment variables:
+
+    - **Claude Code**: `ANTHROPIC_API_KEY`
+    - **OpenCode**: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+    - **Codex**: `OPENAI_API_KEY`
+    - **Cursor**: `CURSOR_API_KEY`
+
+    Set these in your shell profile:
+
+    ```bash
+    export ANTHROPIC_API_KEY="your-key-here"
+    ```
+  </Accordion>
+
+  <Accordion title="Permission denied on install">
+    If the curl installer fails with permission errors, you may need to use `sudo`:
+
+    ```bash
+    curl -fsSL https://harness.lol/install.sh | sudo sh
+    ```
+
+    Or install to a user directory instead:
+
+    ```bash
+    cargo install harnesscli
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run your first agent task in under a minute
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Customize default settings and models
+  </Card>
+</CardGroup>
