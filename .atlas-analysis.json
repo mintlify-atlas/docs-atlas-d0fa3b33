@@ -1,0 +1,94 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Harness CLI",
+  "projectDescription": "Unified CLI to run Claude Code, OpenCode, Codex, or Cursor from a single interface with normalized event streaming.",
+  "theme": "aspen",
+  "primaryColor": "#FF6B35",
+  "lightColor": "#FFA07A",
+  "darkColor": "#D9534F",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/agents",
+              "concepts/event-stream",
+              "concepts/model-registry"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/configuration",
+              "guides/output-formats",
+              "guides/permissions",
+              "guides/timeout-budget"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/run",
+              "cli/list",
+              "cli/check",
+              "cli/config",
+              "cli/models"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Rust API",
+            "pages": [
+              "api/task-config",
+              "api/run-task",
+              "api/event-types",
+              "api/agent-runner"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Unified interface for multiple coding agents (Claude, OpenCode, Codex, Cursor)",
+    "Normalized NDJSON event stream with 8 event types",
+    "Model registry with human-friendly aliases",
+    "Project-level configuration with harness.toml",
+    "Multiple output formats (text, JSON, markdown, stream-json)",
+    "Built-in timeout, budget limits, and graceful cancellation",
+    "Session logging and diagnostics",
+    "Rust library API for programmatic integration"
+  ],
+  "publicApiSurface": [
+    "harness run --agent <agent> --prompt <prompt>",
+    "harness list",
+    "harness check <agent>",
+    "harness config show/init/path",
+    "harness models list/update/resolve/path",
+    "TaskConfig::new()",
+    "run_task()",
+    "run_task_with_cancel()",
+    "Event types: SessionStart, TextDelta, Message, ToolStart, ToolEnd, UsageDelta, Result, Error",
+    "AgentKind: Claude, OpenCode, Codex, Cursor"
+  ]
+}
