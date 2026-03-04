@@ -16,11 +16,15 @@ harness run [OPTIONS]
 <ParamField path="--agent" type="string" default="auto-detect">
   Which agent to use: `claude`, `opencode`, `codex`, `cursor`
   
+  Short flag: `-a`
+  
   If omitted, harness auto-detects based on installed agents or project config.
 </ParamField>
 
 <ParamField path="--prompt" type="string">
   The prompt / task description
+  
+  Short flag: `-p`
   
   Reads from stdin if omitted and stdin is piped.
 </ParamField>
@@ -32,11 +36,15 @@ harness run [OPTIONS]
 <ParamField path="--cwd" type="path">
   Working directory for the agent
   
+  Short flag: `-d`
+  
   Defaults to current directory.
 </ParamField>
 
 <ParamField path="--model" type="string">
   Model to use (e.g. "sonnet", "opus", "gpt-5-codex")
+  
+  Short flag: `-m`
   
   Resolved through the model registry.
 </ParamField>
@@ -49,6 +57,9 @@ harness run [OPTIONS]
 
 <ParamField path="--output" type="string" default="stream-json">
   Output format:
+  
+  Short flag: `-o`
+  
   - `stream-json` / `stream_json` / `ndjson`: NDJSON stream (default)
   - `json`: Single JSON object at end
   - `text`: Plain text deltas only
